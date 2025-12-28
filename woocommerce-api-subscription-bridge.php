@@ -24,6 +24,13 @@ define( 'REACTWOO_API_MANAGER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
 
+// Declare compatibility with WooCommerce features
+add_action( 'before_woocommerce_init', function() {
+    if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', REACTWOO_API_MANAGER_PLUGIN_FILE, true );
+    }
+} );
+
 // Check if WooCommerce and WooCommerce Subscriptions are active
 // Wait for plugins to be loaded before checking
 add_action( 'plugins_loaded', 'reactwoo_api_manager_init', 20 );

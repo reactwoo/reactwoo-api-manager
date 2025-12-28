@@ -67,8 +67,13 @@ $subscriptions_query = new WP_Query( array(
                 if ( empty( $subscriptions ) ) :
                 ?>
                     <tr>
-                        <td colspan="7">
-                            <?php esc_html_e( 'No subscriptions with licenses found.', 'reactwoo-api-manager' ); ?>
+                        <td colspan="7" style="text-align: center; padding: 40px;">
+                            <p style="margin: 0; color: #646970;">
+                                <?php esc_html_e( 'No subscriptions with licenses found.', 'reactwoo-api-manager' ); ?>
+                            </p>
+                            <p style="margin: 10px 0 0 0; font-size: 13px; color: #8c8f94;">
+                                <?php esc_html_e( 'Licenses will appear here once subscriptions with license package types are created and orders are completed.', 'reactwoo-api-manager' ); ?>
+                            </p>
                         </td>
                     </tr>
                 <?php else : ?>
@@ -156,9 +161,12 @@ $subscriptions_query = new WP_Query( array(
         if ( $domain ) {
             $licenses = $api->get_licenses_by_domain( $domain );
         } else {
-            // This would require admin authentication on the license server
-            // For now, we'll sync based on existing subscriptions
-            echo '<div class="notice notice-info"><p>' . esc_html__( 'Bulk sync requires authentication setup. Please sync by domain or individual subscription.', 'reactwoo-api-manager' ) . '</p></div>';
+            // Bulk sync all licenses - this requires admin authentication on the license server
+            // For now, we'll show a helpful message
+            echo '<div class="notice notice-info"><p>';
+            echo esc_html__( 'To sync all licenses at once, please enter a domain name above. This will sync all licenses for that specific domain from the license server.', 'reactwoo-api-manager' );
+            echo '<br><em>' . esc_html__( 'Note: Bulk syncing all licenses across all domains requires additional authentication setup on the license server.', 'reactwoo-api-manager' ) . '</em>';
+            echo '</p></div>';
             return;
         }
 
