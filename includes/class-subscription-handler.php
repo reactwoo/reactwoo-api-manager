@@ -130,14 +130,39 @@ class ReactWoo_Subscription_Handler {
      * @param WC_Order        $renewal_order Renewal order
      */
     public function handle_subscription_renewal( $subscription, $renewal_order ) {
-        // License should remain active on successful renewal
-        // No action needed here, but we log it
-        $license_key = $subscription->get_meta( '_reactwoo_license_key' );
-        if ( $license_key ) {
-            // Log renewal event
-            $subscription->add_meta_data( '_reactwoo_last_renewal', current_time( 'mysql' ), true );
-            $subscription->save();
+        $license_id = $subscription->get_meta( '_reactwoo_license_id' );
+        
+        if ( ! $license_id ) {
+            return;
         }
+
+        // Get updated pricing information from renewal
+        $subscription_price = $subscription->get_total();
+        $currency = $subscription->get_currency();
+        $billing_period = $subscription->get_billing_period();
+        $billing_interval = $subscription->get_billing_interval();
+        
+        // Calculate new expiration date
+        $expires_at = null;
+        if ( $subscription->get_date( 'end' ) ) {
+            $expires_at = $subscription->get_date( 'end' );
+        } elseif ( $billing_period ) {
+            $expires_at = date( 'Y-m-d H:i:s', strtotime( '+' . $billing_interval . ' ' . $billing_period ) );
+        }
+
+        // Update license with new pricing and expiration via API
+        // Note: This assumes the license server has an endpoint to update license pricing
+        // For now, we'll log it and the license server can track renewals separately
+        $api = new ReactWoo_License_Server_API();
+        
+        // Store renewal pricing in subscription meta for reference
+        $subscription->add_meta_data( '_reactwoo_last_renewal', current_time( 'mysql' ), true );
+        $subscription->add_meta_data( '_reactwoo_last_renewal_price', $subscription_price, true );
+        $subscription->add_meta_data( '_reactwoo_last_renewal_currency', $currency, true );
+        $subscription->save();
+        
+        // TODO: If license server has an update endpoint for pricing, call it here
+        // $api->update_license_pricing( $license_id, $pricing_data );
     }
 
     /**
@@ -196,19 +221,58 @@ class ReactWoo_Subscription_Handler {
 
         // Calculate expiration date based on subscription billing period
         $expires_at = null;
+        $billing_period = $subscription->get_billing_period();
+        $billing_interval = $subscription->get_billing_interval();
+        
         if ( $subscription->get_date( 'end' ) ) {
             $expires_at = $subscription->get_date( 'end' );
-        } elseif ( $subscription->get_billing_period() ) {
+        } elseif ( $billing_period ) {
             // Calculate expiration based on billing period
-            $billing_period = $subscription->get_billing_period();
-            $billing_interval = $subscription->get_billing_interval();
-            
             $expires_at = date( 'Y-m-d H:i:s', strtotime( '+' . $billing_interval . ' ' . $billing_period ) );
         }
 
-        // Create license via API
+        // Get subscription pricing information
+        $subscription_price = $subscription->get_total();
+        $currency = $subscription->get_currency();
+        $start_date = $subscription->get_date( 'start' ) ? $subscription->get_date( 'start' ) : current_time( 'mysql' );
+
+        // Calculate human-readable renewal frequency
+        $renewal_frequency = '';
+        if ( $billing_period && $billing_interval ) {
+            $periods = array(
+                'day' => 'Daily',
+                'week' => 'Weekly',
+                'month' => 'Monthly',
+                'year' => 'Yearly',
+            );
+            $period_label = isset( $periods[ $billing_period ] ) ? $periods[ $billing_period ] : ucfirst( $billing_period );
+            if ( $billing_interval > 1 ) {
+                $renewal_frequency = sprintf( 'Every %d %s', $billing_interval, $period_label );
+            } else {
+                $renewal_frequency = $period_label;
+            }
+        }
+
+        // Prepare pricing data to send to license server
+        $pricing_data = array(
+            'price' => $subscription_price,
+            'currency' => $currency,
+            'start_date' => $start_date,
+        );
+
+        if ( $billing_period ) {
+            $pricing_data['billing_period'] = $billing_period;
+        }
+        if ( $billing_interval ) {
+            $pricing_data['billing_interval'] = $billing_interval;
+        }
+        if ( $renewal_frequency ) {
+            $pricing_data['renewal_frequency'] = $renewal_frequency;
+        }
+
+        // Create license via API with pricing information
         $api = new ReactWoo_License_Server_API();
-        $license = $api->create_license( $domain, $package_id, 'active', $expires_at );
+        $license = $api->create_license( $domain, $package_id, 'active', $expires_at, $pricing_data );
 
         if ( is_wp_error( $license ) ) {
             error_log( 'ReactWoo API Manager: Failed to create license for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );

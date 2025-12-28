@@ -69,9 +69,10 @@ class ReactWoo_License_Server_API {
      * @param int    $package_id Package ID
      * @param string $status License status (default: 'active')
      * @param string $expires_at Expiration date (optional)
+     * @param array  $pricing_data Optional pricing data (price, currency, start_date, billing_period, billing_interval)
      * @return array|WP_Error
      */
-    public function create_license( $domain, $package_id, $status = 'active', $expires_at = null ) {
+    public function create_license( $domain, $package_id, $status = 'active', $expires_at = null, $pricing_data = array() ) {
         $url = trailingslashit( $this->base_url ) . 'api/licenses';
 
         $body = array(
@@ -82,6 +83,25 @@ class ReactWoo_License_Server_API {
 
         if ( $expires_at ) {
             $body['expires_at'] = $expires_at;
+        }
+
+        // Add pricing information if provided
+        if ( ! empty( $pricing_data ) ) {
+            if ( isset( $pricing_data['price'] ) ) {
+                $body['price'] = floatval( $pricing_data['price'] );
+            }
+            if ( isset( $pricing_data['currency'] ) ) {
+                $body['currency'] = sanitize_text_field( $pricing_data['currency'] );
+            }
+            if ( isset( $pricing_data['start_date'] ) ) {
+                $body['start_date'] = sanitize_text_field( $pricing_data['start_date'] );
+            }
+            if ( isset( $pricing_data['billing_period'] ) ) {
+                $body['billing_period'] = sanitize_text_field( $pricing_data['billing_period'] );
+            }
+            if ( isset( $pricing_data['billing_interval'] ) ) {
+                $body['billing_interval'] = intval( $pricing_data['billing_interval'] );
+            }
         }
 
         if ( $this->api_key ) {

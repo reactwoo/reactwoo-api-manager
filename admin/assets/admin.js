@@ -43,49 +43,6 @@
             }
         });
 
-        // Handle package selection and update price field (for product edit pages)
-        $('#_reactwoo_license_package_id').on('change', function() {
-            var packageId = $(this).val();
-            var $priceField = $('#_regular_price');
-            var $subscriptionPriceField = $('#_subscription_price');
-            
-            if (packageId && packageId !== '') {
-                // Fetch package details via AJAX
-                if (typeof reactwooApiManager !== 'undefined') {
-                    $.ajax({
-                        url: reactwooApiManager.ajaxUrl,
-                        type: 'POST',
-                        data: {
-                            action: 'reactwoo_get_package_price',
-                            package_id: packageId,
-                            nonce: reactwooApiManager.nonce
-                        },
-                        success: function(response) {
-                            if (response.success && response.data && response.data.price) {
-                                var price = parseFloat(response.data.price);
-                                
-                                if (price > 0) {
-                                    // Update regular price field
-                                    if ($priceField.length) {
-                                        $priceField.val(price.toFixed(2)).trigger('change');
-                                    }
-                                    
-                                    // Update subscription price field if it exists
-                                    if ($subscriptionPriceField.length) {
-                                        $subscriptionPriceField.val(price.toFixed(2)).trigger('change');
-                                    }
-                                    
-                                    // Trigger WooCommerce price update
-                                    if (typeof $().trigger !== 'undefined') {
-                                        $priceField.trigger('woocommerce_update_price');
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-        });
     });
 })(jQuery);
 

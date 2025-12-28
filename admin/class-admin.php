@@ -39,7 +39,6 @@ class ReactWoo_API_Manager_Admin {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
         add_filter( 'woocommerce_subscription_list_table_columns', array( $this, 'add_subscription_license_column' ) );
         add_action( 'woocommerce_subscription_list_table_column_license', array( $this, 'render_subscription_license_column' ), 10, 1 );
-        add_action( 'wp_ajax_reactwoo_get_package_price', array( $this, 'ajax_get_package_price' ) );
     }
 
     /**
@@ -185,40 +184,5 @@ class ReactWoo_API_Manager_Admin {
         }
     }
 
-    /**
-     * AJAX handler to get package price
-     */
-    public function ajax_get_package_price() {
-        check_ajax_referer( 'reactwoo-api-manager-nonce', 'nonce' );
-
-        if ( ! current_user_can( 'edit_products' ) ) {
-            wp_send_json_error( array( 'message' => __( 'Insufficient permissions', 'reactwoo-api-manager' ) ) );
-        }
-
-        $package_id = isset( $_POST['package_id'] ) ? intval( $_POST['package_id'] ) : 0;
-
-        if ( ! $package_id ) {
-            wp_send_json_error( array( 'message' => __( 'Invalid package ID', 'reactwoo-api-manager' ) ) );
-        }
-
-        $api = new ReactWoo_License_Server_API();
-        $packages = $api->get_packages();
-
-        if ( is_wp_error( $packages ) ) {
-            wp_send_json_error( array( 'message' => $packages->get_error_message() ) );
-        }
-
-        foreach ( $packages as $package ) {
-            if ( isset( $package['id'] ) && intval( $package['id'] ) === $package_id ) {
-                $price = isset( $package['price'] ) ? floatval( $package['price'] ) : 0;
-                wp_send_json_success( array(
-                    'price' => $price,
-                    'currency' => get_woocommerce_currency(),
-                ) );
-            }
-        }
-
-        wp_send_json_error( array( 'message' => __( 'Package not found', 'reactwoo-api-manager' ) ) );
-    }
 }
 
