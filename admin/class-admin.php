@@ -39,6 +39,7 @@ class ReactWoo_API_Manager_Admin {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
         add_filter( 'woocommerce_subscription_list_table_columns', array( $this, 'add_subscription_license_column' ) );
         add_action( 'woocommerce_subscription_list_table_column_license', array( $this, 'render_subscription_license_column' ), 10, 1 );
+        add_action( 'wp_ajax_reactwoo_get_package_price', array( $this, 'ajax_get_package_price' ) );
     }
 
     /**
@@ -97,29 +98,47 @@ class ReactWoo_API_Manager_Admin {
      * @param string $hook Current admin page hook
      */
     public function enqueue_admin_scripts( $hook ) {
-        if ( strpos( $hook, 'reactwoo-license' ) === false ) {
-            return;
+        // Load on license manager pages
+        if ( strpos( $hook, 'reactwoo-license' ) !== false ) {
+            wp_enqueue_style(
+                'reactwoo-api-manager-admin',
+                REACTWOO_API_MANAGER_PLUGIN_URL . 'admin/assets/admin.css',
+                array(),
+                REACTWOO_API_MANAGER_VERSION
+            );
+
+            wp_enqueue_script(
+                'reactwoo-api-manager-admin',
+                REACTWOO_API_MANAGER_PLUGIN_URL . 'admin/assets/admin.js',
+                array( 'jquery' ),
+                REACTWOO_API_MANAGER_VERSION,
+                true
+            );
+
+            wp_localize_script( 'reactwoo-api-manager-admin', 'reactwooApiManager', array(
+                'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+                'nonce' => wp_create_nonce( 'reactwoo-api-manager-nonce' ),
+            ) );
         }
+        
+        // Load on product edit pages for package selection functionality
+        if ( $hook === 'post.php' || $hook === 'post-new.php' ) {
+            global $post;
+            if ( $post && $post->post_type === 'product' ) {
+                wp_enqueue_script(
+                    'reactwoo-api-manager-product',
+                    REACTWOO_API_MANAGER_PLUGIN_URL . 'admin/assets/admin.js',
+                    array( 'jquery' ),
+                    REACTWOO_API_MANAGER_VERSION,
+                    true
+                );
 
-        wp_enqueue_style(
-            'reactwoo-api-manager-admin',
-            REACTWOO_API_MANAGER_PLUGIN_URL . 'admin/assets/admin.css',
-            array(),
-            REACTWOO_API_MANAGER_VERSION
-        );
-
-        wp_enqueue_script(
-            'reactwoo-api-manager-admin',
-            REACTWOO_API_MANAGER_PLUGIN_URL . 'admin/assets/admin.js',
-            array( 'jquery' ),
-            REACTWOO_API_MANAGER_VERSION,
-            true
-        );
-
-        wp_localize_script( 'reactwoo-api-manager-admin', 'reactwooApiManager', array(
-            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-            'nonce' => wp_create_nonce( 'reactwoo-api-manager-nonce' ),
-        ) );
+                wp_localize_script( 'reactwoo-api-manager-product', 'reactwooApiManager', array(
+                    'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+                    'nonce' => wp_create_nonce( 'reactwoo-api-manager-nonce' ),
+                ) );
+            }
+        }
     }
 
     /**
@@ -164,6 +183,42 @@ class ReactWoo_API_Manager_Admin {
         } else {
             echo '<span class="dashicons dashicons-no-alt" style="color: #dc3232;"></span> ' . __( 'No license', 'reactwoo-api-manager' );
         }
+    }
+
+    /**
+     * AJAX handler to get package price
+     */
+    public function ajax_get_package_price() {
+        check_ajax_referer( 'reactwoo-api-manager-nonce', 'nonce' );
+
+        if ( ! current_user_can( 'edit_products' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Insufficient permissions', 'reactwoo-api-manager' ) ) );
+        }
+
+        $package_id = isset( $_POST['package_id'] ) ? intval( $_POST['package_id'] ) : 0;
+
+        if ( ! $package_id ) {
+            wp_send_json_error( array( 'message' => __( 'Invalid package ID', 'reactwoo-api-manager' ) ) );
+        }
+
+        $api = new ReactWoo_License_Server_API();
+        $packages = $api->get_packages();
+
+        if ( is_wp_error( $packages ) ) {
+            wp_send_json_error( array( 'message' => $packages->get_error_message() ) );
+        }
+
+        foreach ( $packages as $package ) {
+            if ( isset( $package['id'] ) && intval( $package['id'] ) === $package_id ) {
+                $price = isset( $package['price'] ) ? floatval( $package['price'] ) : 0;
+                wp_send_json_success( array(
+                    'price' => $price,
+                    'currency' => get_woocommerce_currency(),
+                ) );
+            }
+        }
+
+        wp_send_json_error( array( 'message' => __( 'Package not found', 'reactwoo-api-manager' ) ) );
     }
 }
 

@@ -74,14 +74,12 @@ class ReactWoo_Product_Meta {
         foreach ( $packages as $package ) {
             $package_id = isset( $package['id'] ) ? $package['id'] : '';
             $package_name = isset( $package['name'] ) ? $package['name'] : '';
-            $package_price = isset( $package['price'] ) ? floatval( $package['price'] ) : 0;
             
-            $label = $package_name;
-            if ( $package_price > 0 ) {
-                $label .= ' (' . wc_price( $package_price ) . ')';
-            }
-
-            $options[ $package_id ] = $label;
+            // Strip HTML tags and clean up whitespace from package name
+            $clean_name = wp_strip_all_tags( $package_name );
+            $clean_name = trim( $clean_name );
+            
+            $options[ $package_id ] = $clean_name;
         }
 
         return $options;
@@ -93,10 +91,49 @@ class ReactWoo_Product_Meta {
      * @param int $post_id Post ID
      */
     public function save_license_type_field( $post_id ) {
-        if ( isset( $_POST['_reactwoo_license_package_id'] ) ) {
-            update_post_meta( $post_id, '_reactwoo_license_package_id', intval( $_POST['_reactwoo_license_package_id'] ) );
+        $package_id = isset( $_POST['_reactwoo_license_package_id'] ) ? intval( $_POST['_reactwoo_license_package_id'] ) : 0;
+        
+        if ( $package_id > 0 ) {
+            // Save package ID
+            update_post_meta( $post_id, '_reactwoo_license_package_id', $package_id );
+            
+            // Get package details and update product price
+            $api = new ReactWoo_License_Server_API();
+            $packages = $api->get_packages();
+            
+            if ( ! is_wp_error( $packages ) ) {
+                $selected_package = $this->find_package_by_id( $packages, $package_id );
+                
+                if ( $selected_package && isset( $selected_package['price'] ) ) {
+                    $package_price = floatval( $selected_package['price'] );
+                    
+                    if ( $package_price > 0 ) {
+                        $product = wc_get_product( $post_id );
+                        
+                        if ( $product ) {
+                            // Update product price
+                            $product->set_regular_price( $package_price );
+                            $product->set_price( $package_price );
+                            
+                            // For subscription products, also update subscription price
+                            if ( $product->is_type( 'subscription' ) ) {
+                                $product->update_meta_data( '_subscription_price', $package_price );
+                                $product->set_sale_price( '' ); // Clear sale price
+                            }
+                            
+                            $product->save();
+                            
+                            // Store package price and currency for reference
+                            update_post_meta( $post_id, '_reactwoo_license_package_price', $package_price );
+                            update_post_meta( $post_id, '_reactwoo_license_package_currency', get_woocommerce_currency() );
+                        }
+                    }
+                }
+            }
         } else {
             delete_post_meta( $post_id, '_reactwoo_license_package_id' );
+            delete_post_meta( $post_id, '_reactwoo_license_package_price' );
+            delete_post_meta( $post_id, '_reactwoo_license_package_currency' );
         }
     }
 
