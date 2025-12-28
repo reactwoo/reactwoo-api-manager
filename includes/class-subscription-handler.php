@@ -198,8 +198,21 @@ class ReactWoo_Subscription_Handler {
         $package_id = null;
         foreach ( $subscription->get_items() as $item ) {
             $product = $item->get_product();
-            if ( $product && $product->is_type( 'subscription' ) ) {
-                $package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
+            // Check for subscription product types (including variations)
+            if ( $product && ( $product->is_type( 'subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
+                // For variable subscriptions, check variation first, then parent
+                $product_id = $product->get_id();
+                if ( $product->is_type( 'subscription_variation' ) ) {
+                    $variation_id = $product_id;
+                    $package_id = get_post_meta( $variation_id, '_reactwoo_license_package_id', true );
+                    // If not set on variation, check parent
+                    if ( ! $package_id ) {
+                        $parent_id = $product->get_parent_id();
+                        $package_id = get_post_meta( $parent_id, '_reactwoo_license_package_id', true );
+                    }
+                } else {
+                    $package_id = get_post_meta( $product_id, '_reactwoo_license_package_id', true );
+                }
                 if ( $package_id ) {
                     break;
                 }

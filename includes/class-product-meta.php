@@ -19,6 +19,9 @@ class ReactWoo_Product_Meta {
         add_action( 'woocommerce_process_product_meta', array( $this, 'save_license_type_field' ), 10, 1 );
         add_filter( 'woocommerce_product_data_tabs', array( $this, 'add_license_tab' ) );
         add_action( 'woocommerce_product_data_panels', array( $this, 'add_license_tab_content' ) );
+        
+        // Handle variable subscription variations
+        add_action( 'woocommerce_save_product_variation', array( $this, 'save_variation_license_type_field' ), 10, 2 );
     }
 
     /**
@@ -29,8 +32,8 @@ class ReactWoo_Product_Meta {
 
         $product = wc_get_product( $post->ID );
         
-        // Only show for subscription products
-        if ( ! $product || ! $product->is_type( 'subscription' ) ) {
+        // Only show for subscription products (including variable subscriptions)
+        if ( ! $product || ! ( $product->is_type( 'subscription' ) || $product->is_type( 'variable-subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
             return;
         }
 
@@ -99,6 +102,31 @@ class ReactWoo_Product_Meta {
     }
 
     /**
+     * Save license type field for variation
+     *
+     * @param int $variation_id Variation ID
+     * @param int $loop Loop index
+     */
+    public function save_variation_license_type_field( $variation_id, $loop ) {
+        // Check if this is a subscription variation
+        $product = wc_get_product( $variation_id );
+        if ( ! $product || ! $product->is_type( 'subscription_variation' ) ) {
+            return;
+        }
+
+        // Variation meta is stored with array index in POST data
+        $key = "variable_reactwoo_license_package_id";
+        if ( isset( $_POST[ $key ] ) && is_array( $_POST[ $key ] ) && isset( $_POST[ $key ][ $loop ] ) ) {
+            $package_id = intval( $_POST[ $key ][ $loop ] );
+            if ( $package_id > 0 ) {
+                update_post_meta( $variation_id, '_reactwoo_license_package_id', $package_id );
+            } else {
+                delete_post_meta( $variation_id, '_reactwoo_license_package_id' );
+            }
+        }
+    }
+
+    /**
      * Add license tab to product data tabs
      *
      * @param array $tabs Existing tabs
@@ -108,7 +136,7 @@ class ReactWoo_Product_Meta {
         $tabs['reactwoo_license'] = array(
             'label' => __( 'License Settings', 'reactwoo-api-manager' ),
             'target' => 'reactwoo_license_product_data',
-            'class' => array( 'show_if_subscription' ),
+            'class' => array( 'show_if_subscription', 'show_if_variable-subscription' ),
             'priority' => 25,
         );
         return $tabs;
@@ -122,8 +150,8 @@ class ReactWoo_Product_Meta {
 
         $product = wc_get_product( $post->ID );
         
-        // Only show for subscription products
-        if ( ! $product || ! $product->is_type( 'subscription' ) ) {
+        // Only show for subscription products (including variable subscriptions)
+        if ( ! $product || ! ( $product->is_type( 'subscription' ) || $product->is_type( 'variable-subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
             return;
         }
 
