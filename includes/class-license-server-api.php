@@ -226,12 +226,27 @@ class ReactWoo_License_Server_API {
         ) );
 
         if ( is_wp_error( $response ) ) {
+            error_log( 'ReactWoo API Manager: Error fetching all licenses - ' . $response->get_error_message() . ' | URL: ' . $url );
             return $response;
         }
 
         $response_code = wp_remote_retrieve_response_code( $response );
         $response_body = wp_remote_retrieve_body( $response );
         $data = json_decode( $response_body, true );
+
+        // Log the response for debugging
+        if ( $response_code !== 200 ) {
+            error_log( 'ReactWoo API Manager: License fetch failed - Status: ' . $response_code . ' | URL: ' . $url . ' | Response: ' . $response_body );
+        }
+
+        if ( $response_code === 404 ) {
+            // Check if it's a route not found error
+            $error_message = isset( $data['error'] ) ? $data['error'] : 'Route not found';
+            if ( strpos( strtolower( $error_message ), 'route' ) !== false || strpos( strtolower( $response_body ), 'route' ) !== false ) {
+                error_log( 'ReactWoo API Manager: The /api/licenses endpoint may not be deployed on the server. Please ensure the server code has been updated and restarted.' );
+            }
+            return new WP_Error( 'api_error', 'Route not found. The /api/licenses endpoint may not be available on the server. Please check server configuration.', array( 'status' => $response_code ) );
+        }
 
         if ( $response_code === 200 && isset( $data['success'] ) && $data['success'] && isset( $data['licenses'] ) ) {
             return $data['licenses'];
