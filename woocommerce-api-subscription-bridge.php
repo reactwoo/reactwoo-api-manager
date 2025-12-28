@@ -25,28 +25,27 @@ define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
 
 // Check if WooCommerce and WooCommerce Subscriptions are active
-if ( ! function_exists( 'reactwoo_api_manager_check_dependencies' ) ) {
-    function reactwoo_api_manager_check_dependencies() {
-        if ( ! class_exists( 'WooCommerce' ) ) {
-            add_action( 'admin_notices', function() {
-                echo '<div class="error"><p><strong>ReactWoo API Manager</strong> requires WooCommerce to be installed and active.</p></div>';
-            } );
-            return false;
-        }
+// Wait for plugins to be loaded before checking
+add_action( 'plugins_loaded', 'reactwoo_api_manager_init', 20 );
 
-        if ( ! class_exists( 'WC_Subscriptions' ) ) {
-            add_action( 'admin_notices', function() {
-                echo '<div class="error"><p><strong>ReactWoo API Manager</strong> requires WooCommerce Subscriptions to be installed and active.</p></div>';
-            } );
-            return false;
-        }
-
-        return true;
+function reactwoo_api_manager_init() {
+    // Check if WooCommerce is active
+    if ( ! class_exists( 'WooCommerce' ) ) {
+        add_action( 'admin_notices', function() {
+            echo '<div class="notice notice-error"><p><strong>ReactWoo API Manager</strong> requires WooCommerce to be installed and active.</p></div>';
+        } );
+        return;
     }
-}
 
-// Initialize the plugin
-if ( reactwoo_api_manager_check_dependencies() ) {
+    // Check if WooCommerce Subscriptions is active
+    if ( ! class_exists( 'WC_Subscriptions' ) ) {
+        add_action( 'admin_notices', function() {
+            echo '<div class="notice notice-error"><p><strong>ReactWoo API Manager</strong> requires WooCommerce Subscriptions to be installed and active.</p></div>';
+        } );
+        return;
+    }
+
+    // All dependencies are met, initialize the plugin
     require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-reactwoo-api-manager.php';
     ReactWoo_API_Manager::get_instance();
 }
