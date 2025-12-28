@@ -34,6 +34,14 @@
                 return false;
             }
         });
+
+        // Confirm match licenses action
+        $('#match-licenses-form').on('submit', function(e) {
+            if (!confirm('This will match all licenses from the server with your WooCommerce subscriptions. This may take a moment. Continue?')) {
+                e.preventDefault();
+                return false;
+            }
+        });
     });
 })(jQuery);
 

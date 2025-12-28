@@ -43,6 +43,7 @@ class ReactWoo_API_Manager {
     private function init() {
         // Load dependencies
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
+        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-product-meta.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-subscription-handler.php';
 

@@ -137,7 +137,20 @@ $subscriptions_query = new WP_Query( array(
 
     <hr>
 
-    <h2><?php esc_html_e( 'Sync Licenses from Server', 'reactwoo-api-manager' ); ?></h2>
+    <h2><?php esc_html_e( 'Sync & Match Licenses', 'reactwoo-api-manager' ); ?></h2>
+    
+    <div class="reactwoo-sync-section" style="background: #f9f9f9; padding: 20px; margin: 20px 0; border-left: 4px solid #2271b1;">
+        <h3><?php esc_html_e( 'Match Existing Licenses', 'reactwoo-api-manager' ); ?></h3>
+        <p><?php esc_html_e( 'Match licenses from the server with your WooCommerce subscriptions. This will attempt to link licenses to subscriptions by license key, domain, or customer email.', 'reactwoo-api-manager' ); ?></p>
+        
+        <form method="post" action="" id="match-licenses-form">
+            <?php wp_nonce_field( 'reactwoo_match_licenses', 'reactwoo_match_nonce' ); ?>
+            <?php submit_button( __( 'Match Licenses to Subscriptions', 'reactwoo-api-manager' ), 'secondary', 'match_licenses', false ); ?>
+        </form>
+    </div>
+
+    <div class="reactwoo-sync-section" style="background: #f9f9f9; padding: 20px; margin: 20px 0; border-left: 4px solid #2271b1;">
+        <h3><?php esc_html_e( 'Sync Licenses from Server', 'reactwoo-api-manager' ); ?></h3>
     <p><?php esc_html_e( 'Fetch licenses from the license server and associate them with packages if needed. Leave domain empty to sync all licenses, or enter a domain to sync licenses for that specific domain only.', 'reactwoo-api-manager' ); ?></p>
     
     <form method="post" action="" id="sync-licenses-form">
@@ -153,8 +166,11 @@ $subscriptions_query = new WP_Query( array(
     </form>
 
     <?php
+    // Load license sync class
+    require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
+
     /**
-     * Sync licenses from server
+     * Sync licenses from server and match to subscriptions
      */
     function reactwoo_sync_licenses_from_server( $domain = '' ) {
         $api = new ReactWoo_License_Server_API();
@@ -185,51 +201,55 @@ $subscriptions_query = new WP_Query( array(
             return;
         }
 
-        $synced = 0;
-        foreach ( $licenses as $license ) {
-            // Try to find matching subscription by license key
-            $subscriptions = get_posts( array(
-                'post_type' => 'shop_subscription',
-                'posts_per_page' => 1,
-                'meta_query' => array(
-                    array(
-                        'key' => '_reactwoo_license_key',
-                        'value' => $license['license_key'],
-                        'compare' => '=',
-                    ),
-                ),
-            ) );
+        // Match licenses to subscriptions
+        $match_results = ReactWoo_License_Sync::match_licenses_to_subscriptions( $licenses );
+        
+        // Display results
+        echo ReactWoo_License_Sync::format_match_results( $match_results );
+    }
 
-            if ( empty( $subscriptions ) ) {
-                // License exists on server but not in WordPress
-                // Could create a record or just skip
-                continue;
+    /**
+     * Sync and match licenses (separate action)
+     */
+    function reactwoo_match_licenses_locally() {
+        $api = new ReactWoo_License_Server_API();
+        
+        // Get all licenses from server
+        $licenses = $api->get_all_licenses();
+        
+        if ( is_wp_error( $licenses ) ) {
+            if ( $licenses->get_error_code() === 'api_auth_error' ) {
+                echo '<div class="notice notice-error"><p>';
+                echo esc_html__( 'API key is required to sync licenses. Please configure your API key in ReactWoo Licenses > Settings.', 'reactwoo-api-manager' );
+                echo '</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>';
+                echo esc_html( sprintf( __( 'Error fetching licenses: %s', 'reactwoo-api-manager' ), $licenses->get_error_message() ) );
+                echo '</p></div>';
             }
-
-            $subscription = wcs_get_subscription( $subscriptions[0]->ID );
-            if ( $subscription ) {
-                // Update license information
-                if ( isset( $license['id'] ) ) {
-                    $subscription->update_meta_data( '_reactwoo_license_id', $license['id'] );
-                }
-                if ( isset( $license['package_id'] ) && ! $subscription->get_meta( '_reactwoo_license_package_id' ) ) {
-                    $subscription->update_meta_data( '_reactwoo_license_package_id', $license['package_id'] );
-                }
-                $subscription->save();
-                $synced++;
-            }
+            return;
         }
 
-        if ( $synced > 0 ) {
-            echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Synced %d license(s).', 'reactwoo-api-manager' ), $synced ) . '</p></div>';
-        } else {
-            echo '<div class="notice notice-info"><p>' . esc_html__( 'No licenses to sync.', 'reactwoo-api-manager' ) . '</p></div>';
+        if ( empty( $licenses ) ) {
+            echo '<div class="notice notice-info"><p>' . esc_html__( 'No licenses found on the server.', 'reactwoo-api-manager' ) . '</p></div>';
+            return;
         }
+
+        // Match licenses to subscriptions
+        $match_results = ReactWoo_License_Sync::match_licenses_to_subscriptions( $licenses );
+        
+        // Display results
+        echo ReactWoo_License_Sync::format_match_results( $match_results );
     }
 
     // Handle sync action
     if ( isset( $_POST['sync_licenses'] ) && check_admin_referer( 'reactwoo_sync_licenses', 'reactwoo_sync_nonce' ) ) {
         reactwoo_sync_licenses_from_server( isset( $_POST['sync_domain'] ) ? sanitize_text_field( $_POST['sync_domain'] ) : '' );
+    }
+
+    // Handle match licenses action (separate from sync)
+    if ( isset( $_POST['match_licenses'] ) && check_admin_referer( 'reactwoo_match_licenses', 'reactwoo_match_nonce' ) ) {
+        reactwoo_match_licenses_locally();
     }
     ?>
 </div>
