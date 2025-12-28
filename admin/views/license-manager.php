@@ -138,15 +138,16 @@ $subscriptions_query = new WP_Query( array(
     <hr>
 
     <h2><?php esc_html_e( 'Sync Licenses from Server', 'reactwoo-api-manager' ); ?></h2>
-    <p><?php esc_html_e( 'Fetch licenses from the license server and associate them with packages if needed.', 'reactwoo-api-manager' ); ?></p>
+    <p><?php esc_html_e( 'Fetch licenses from the license server and associate them with packages if needed. Leave domain empty to sync all licenses, or enter a domain to sync licenses for that specific domain only.', 'reactwoo-api-manager' ); ?></p>
     
     <form method="post" action="" id="sync-licenses-form">
         <?php wp_nonce_field( 'reactwoo_sync_licenses', 'reactwoo_sync_nonce' ); ?>
         <p>
             <label for="sync_domain">
-                <?php esc_html_e( 'Domain (optional - leave empty to sync all)', 'reactwoo-api-manager' ); ?>
+                <?php esc_html_e( 'Domain (optional - leave empty to sync all licenses)', 'reactwoo-api-manager' ); ?>
             </label><br>
-            <input type="text" id="sync_domain" name="sync_domain" class="regular-text" placeholder="example.com" />
+            <input type="text" id="sync_domain" name="sync_domain" class="regular-text" placeholder="example.com (leave empty for all)" />
+            <span class="description"><?php esc_html_e( 'Note: Syncing all licenses requires an API key to be configured in Settings.', 'reactwoo-api-manager' ); ?></span>
         </p>
         <?php submit_button( __( 'Sync Licenses', 'reactwoo-api-manager' ), 'primary', 'sync_licenses', false ); ?>
     </form>
@@ -159,15 +160,24 @@ $subscriptions_query = new WP_Query( array(
         $api = new ReactWoo_License_Server_API();
         
         if ( $domain ) {
+            // Sync licenses for a specific domain
             $licenses = $api->get_licenses_by_domain( $domain );
         } else {
-            // Bulk sync all licenses - this requires admin authentication on the license server
-            // For now, we'll show a helpful message
-            echo '<div class="notice notice-info"><p>';
-            echo esc_html__( 'To sync all licenses at once, please enter a domain name above. This will sync all licenses for that specific domain from the license server.', 'reactwoo-api-manager' );
-            echo '<br><em>' . esc_html__( 'Note: Bulk syncing all licenses across all domains requires additional authentication setup on the license server.', 'reactwoo-api-manager' ) . '</em>';
-            echo '</p></div>';
-            return;
+            // Sync all licenses from the server
+            $licenses = $api->get_all_licenses();
+            
+            if ( is_wp_error( $licenses ) ) {
+                if ( $licenses->get_error_code() === 'api_auth_error' ) {
+                    echo '<div class="notice notice-error"><p>';
+                    echo esc_html__( 'API key is required to sync all licenses. Please configure your API key in ReactWoo Licenses > Settings.', 'reactwoo-api-manager' );
+                    echo '</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>';
+                    echo esc_html( sprintf( __( 'Error fetching licenses: %s', 'reactwoo-api-manager' ), $licenses->get_error_message() ) );
+                    echo '</p></div>';
+                }
+                return;
+            }
         }
 
         if ( is_wp_error( $licenses ) ) {

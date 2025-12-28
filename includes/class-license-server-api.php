@@ -200,10 +200,50 @@ class ReactWoo_License_Server_API {
      * @return array|WP_Error
      */
     public function get_all_licenses( $args = array() ) {
-        // Note: This would require authentication on the license server
-        // For now, we'll use the admin endpoint which requires proper auth setup
-        // This is a placeholder - actual implementation depends on your auth setup
-        return new WP_Error( 'not_implemented', 'Admin endpoint requires authentication setup' );
+        $url = trailingslashit( $this->base_url ) . 'api/licenses';
+        
+        // Add API key and other query parameters
+        $query_args = array();
+        if ( $this->api_key ) {
+            $query_args['api_key'] = $this->api_key;
+        }
+        if ( isset( $args['status'] ) ) {
+            $query_args['status'] = $args['status'];
+        }
+        if ( isset( $args['search'] ) ) {
+            $query_args['search'] = $args['search'];
+        }
+        
+        if ( ! empty( $query_args ) ) {
+            $url = add_query_arg( $query_args, $url );
+        }
+
+        $response = wp_remote_get( $url, array(
+            'timeout' => 30, // Longer timeout for potentially large datasets
+            'headers' => array(
+                'Content-Type' => 'application/json',
+            ),
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $response_code = wp_remote_retrieve_response_code( $response );
+        $response_body = wp_remote_retrieve_body( $response );
+        $data = json_decode( $response_body, true );
+
+        if ( $response_code === 200 && isset( $data['success'] ) && $data['success'] && isset( $data['licenses'] ) ) {
+            return $data['licenses'];
+        }
+
+        if ( $response_code === 401 ) {
+            $error_message = isset( $data['error'] ) ? $data['error'] : 'API key is required or invalid';
+            return new WP_Error( 'api_auth_error', $error_message, array( 'status' => $response_code ) );
+        }
+
+        $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to fetch licenses';
+        return new WP_Error( 'api_error', $error_message, array( 'status' => $response_code ) );
     }
 }
 
