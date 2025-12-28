@@ -1,0 +1,57 @@
+/**
+ * Admin Styles
+ *
+ * @package ReactWoo_API_Manager
+ */
+
+.reactwoo-license-manager {
+    margin-top: 20px;
+}
+
+.reactwoo-license-manager table th,
+.reactwoo-license-manager table td {
+    padding: 12px;
+}
+
+.reactwoo-license-manager code {
+    background: #f0f0f1;
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: Consolas, Monaco, monospace;
+}
+
+.subscription-status {
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.subscription-status.status-active {
+    background: #00a32a;
+    color: #fff;
+}
+
+.subscription-status.status-on-hold {
+    background: #f0b849;
+    color: #1d2327;
+}
+
+.subscription-status.status-cancelled {
+    background: #d63638;
+    color: #fff;
+}
+
+.subscription-status.status-expired {
+    background: #646970;
+    color: #fff;
+}
+
+.subscription-status.status-pending-cancel {
+    background: #f0b849;
+    color: #1d2327;
+}
+
