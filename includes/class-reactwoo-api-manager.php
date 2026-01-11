@@ -44,12 +44,14 @@ class ReactWoo_API_Manager {
         // Load dependencies
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
+        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-product-meta.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-subscription-handler.php';
 
         // Initialize components
         new ReactWoo_Product_Meta();
         new ReactWoo_Subscription_Handler();
+        new ReactWoo_License_Display();
 
         // Initialize admin if in admin area
         if ( is_admin() ) {
