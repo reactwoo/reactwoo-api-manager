@@ -11,6 +11,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
 
+/**
+ * Helper to fetch POSTed value safely.
+ *
+ * @param string $key
+ * @param mixed  $default
+ * @return mixed
+ */
+function reactwoo_old_value( $key, $default = '' ) {
+    return isset( $_POST[ $key ] ) ? esc_attr( sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) ) : esc_attr( $default );
+}
+
+$get_post = function( $key, $default = '' ) {
+    return isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : $default;
+};
+
 $wizard_result = $this->handle_license_wizard_submission();
 $subscription_products = $this->get_license_subscription_products();
 $license_api = new ReactWoo_License_Server_API();
@@ -43,16 +58,6 @@ $billing_period_options = array(
     'month' => __( 'Month', 'reactwoo-api-manager' ),
     'year'  => __( 'Year', 'reactwoo-api-manager' ),
 );
-
-$get_post = function( $key, $default = '' ) {
-    return isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : $default;
-};
-
-if ( ! function_exists( 'reactwoo_old_value' ) ) {
-    function reactwoo_old_value( $key, $default = '' ) {
-        return isset( $_POST[ $key ] ) ? esc_attr( sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) ) : esc_attr( $default );
-    }
-}
 
 ?>
 <div class="wrap">
