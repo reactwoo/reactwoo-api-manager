@@ -105,20 +105,70 @@ class ReactWoo_License_Display {
      * @return array|null
      */
     private function get_subscription_license_data( $subscription ) {
+        $domain = $subscription->get_meta( '_reactwoo_license_domain', true );
+        $package_id = $subscription->get_meta( '_reactwoo_license_package_id', true );
         $license_key = $subscription->get_meta( '_reactwoo_license_key', true );
-        if ( $license_key ) {
+
+        if ( $license_key && $domain && $package_id ) {
+            $license = $this->get_cached_license( $domain, $package_id );
+            if ( $license ) {
+                return $license;
+            }
             return array(
                 'key'    => $license_key,
-                'domain' => $subscription->get_meta( '_reactwoo_license_domain', true ),
+                'domain' => $domain,
             );
         }
 
         $order = $subscription->get_parent();
         if ( $order instanceof WC_Order ) {
-            return $this->get_order_license_data( $order );
+            $license_key = $order->get_meta( '_reactwoo_license_key', true );
+            if ( $license_key ) {
+                return array(
+                    'key'    => $license_key,
+                    'domain' => $order->get_meta( '_reactwoo_license_domain', true ),
+                );
+            }
         }
 
         return null;
+    }
+    /**
+     * Get license data from the server and cache result briefly.
+     *
+     * @param string $domain
+     * @param int    $package_id
+     * @return array|null
+     */
+    private function get_cached_license( $domain, $package_id ) {
+        if ( ! $domain || ! $package_id ) {
+            return null;
+        }
+
+        $cache_key = 'reactwoo_license_' . md5( $domain . '_' . $package_id );
+        $cached = get_transient( $cache_key );
+        if ( $cached ) {
+            return $cached;
+        }
+
+        $api = new ReactWoo_License_Server_API();
+        $package_type = $api->get_package_type_by_id( $package_id );
+        if ( is_wp_error( $package_type ) || ! $package_type ) {
+            return null;
+        }
+
+        $license = $api->find_license_by_domain_and_package_type( $domain, $package_type );
+        if ( is_wp_error( $license ) || empty( $license ) ) {
+            return null;
+        }
+
+        $value = array(
+            'key'    => isset( $license['license_key'] ) ? $license['license_key'] : '',
+            'domain' => isset( $license['domain'] ) ? $license['domain'] : $domain,
+        );
+
+        set_transient( $cache_key, $value, MINUTE_IN_SECONDS * 5 );
+        return $value;
     }
 
     /**
