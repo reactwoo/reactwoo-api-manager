@@ -385,16 +385,51 @@ class ReactWoo_Subscription_Handler {
         if ( ! $order ) {
             return;
         }
-        $license_id = $order->get_meta( '_reactwoo_license_id' );
-        if ( ! $license_id ) {
+
+        $license_ids = $this->collect_license_ids_for_order( $order );
+
+        if ( empty( $license_ids ) ) {
             return;
         }
 
         $api = new ReactWoo_License_Server_API();
-        $result = $api->update_license_status( $license_id, 'inactive' );
-        if ( is_wp_error( $result ) ) {
-            error_log( 'ReactWoo API Manager: Failed to deactivate license #' . $license_id . ' after order deletion - ' . $result->get_error_message() );
+        foreach ( array_unique( $license_ids ) as $license_id ) {
+            if ( ! $license_id ) {
+                continue;
+            }
+
+            $result = $api->update_license_status( $license_id, 'inactive' );
+            if ( is_wp_error( $result ) ) {
+                error_log( 'ReactWoo API Manager: Failed to deactivate license #' . $license_id . ' after order deletion - ' . $result->get_error_message() );
+            }
         }
+    }
+
+    /**
+     * Collect license IDs associated with an order (order + linked subscriptions).
+     *
+     * @param WC_Order $order
+     * @return array
+     */
+    private function collect_license_ids_for_order( $order ) {
+        $license_ids = array();
+
+        $order_license_id = $order->get_meta( '_reactwoo_license_id' );
+        if ( $order_license_id ) {
+            $license_ids[] = $order_license_id;
+        }
+
+        if ( function_exists( 'wcs_get_subscriptions_for_order' ) ) {
+            $subscriptions = wcs_get_subscriptions_for_order( $order->get_id() );
+            foreach ( $subscriptions as $subscription ) {
+                $subscription_license_id = $subscription->get_meta( '_reactwoo_license_id', true );
+                if ( $subscription_license_id ) {
+                    $license_ids[] = $subscription_license_id;
+                }
+            }
+        }
+
+        return $license_ids;
     }
 
     /**
