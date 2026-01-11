@@ -17,6 +17,11 @@ class ReactWoo_License_Display {
         add_action( 'woocommerce_order_details_after_order_table', array( $this, 'print_license_on_order_page' ), 15, 1 );
         add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
         add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
+        add_action( 'init', array( $this, 'register_license_endpoint' ) );
+        add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
+        add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
+        add_filter( 'woocommerce_account_menu_items', array( $this, 'add_license_menu_item' ) );
+        add_action( 'woocommerce_account_license_endpoint', array( $this, 'render_license_endpoint' ) );
     }
 
     /**
@@ -168,5 +173,108 @@ class ReactWoo_License_Display {
         }
 
         return $fields;
+    }
+
+    /**
+     * Register rewrite endpoint for license display.
+     */
+    public function register_license_endpoint() {
+        add_rewrite_endpoint( 'license', EP_PAGES );
+    }
+
+    /**
+     * Add query var.
+     *
+     * @param array $vars
+     * @return array
+     */
+    public function register_query_vars( $vars ) {
+        $vars[] = 'reactwoo_license_download';
+        return $vars;
+    }
+
+    /**
+     * Handle download requests.
+     */
+    public function maybe_handle_license_download() {
+        if ( ! is_user_logged_in() ) {
+            return;
+        }
+
+        $download = get_query_var( 'reactwoo_license_download' );
+        if ( ! $download ) {
+            return;
+        }
+
+        $license_key = get_post_meta( intval( $download ), '_reactwoo_license_key', true ) ?: get_post_meta( intval( $download ), '_reactwoo_license_label', true );
+        $domain = get_post_meta( intval( $download ), '_reactwoo_license_domain', true );
+
+        if ( ! $license_key ) {
+            return;
+        }
+
+        $filename = 'reactwoo-license-' . sanitize_file_name( $license_key ) . '.txt';
+        header( 'Content-Type: text/plain' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+
+        echo "ReactWoo License\n";
+        echo "License Key: {$license_key}\n";
+        if ( $domain ) {
+            echo "Domain: {$domain}\n";
+        }
+        echo "\nInstructions:\n";
+        echo "1. Install the license key on your ReactWoo product.\n";
+        echo "2. Activate the plugin on the domain above.\n";
+        echo "3. Contact support if you need help.\n";
+        exit;
+    }
+
+    /**
+     * Add menu item to My Account.
+     *
+     * @param array $items
+     * @return array
+     */
+    public function add_license_menu_item( $items ) {
+        $items['license'] = __( 'License', 'reactwoo-api-manager' );
+        return $items;
+    }
+
+    /**
+     * Display license tab content.
+     */
+    public function render_license_endpoint() {
+        $subscriptions = wcs_get_users_subscriptions( array( 'user_id' => get_current_user_id() ) );
+        $licenses = array();
+        foreach ( $subscriptions as $subscription ) {
+            $license_key = $subscription->get_meta( '_reactwoo_license_key', true );
+            if ( $license_key ) {
+                $licenses[] = array(
+                    'key'    => $license_key,
+                    'domain' => $subscription->get_meta( '_reactwoo_license_domain', true ),
+                    'name'   => $subscription->get_items()[0]->get_name(),
+                    'id'     => $subscription->get_id(),
+                );
+            }
+        }
+
+        if ( empty( $licenses ) ) {
+            echo '<p>' . esc_html__( 'No licenses found. Complete a subscription to generate one.', 'reactwoo-api-manager' ) . '</p>';
+            return;
+        }
+
+        echo '<div class="reactwoo-licenses-table">';
+        foreach ( $licenses as $license ) {
+            echo '<div class="reactwoo-license-row" style="border:1px solid #dcdcdc;padding:16px;margin-bottom:16px;border-radius:6px;">';
+            echo '<h2>' . esc_html( $license['name'] ) . ' #' . esc_html( $license['id'] ) . '</h2>';
+            echo '<p><strong>' . esc_html__( 'License Key', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['key'] ) . '</p>';
+            if ( $license['domain'] ) {
+                echo '<p><strong>' . esc_html__( 'Domain', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
+            }
+            $download_url = esc_url( add_query_arg( 'reactwoo_license_download', $license['id'], get_permalink( wc_get_page_id( 'myaccount' ) ) . 'license/' ) );
+            echo '<p><a class="button button-secondary" href="' . $download_url . '">' . esc_html__( 'Download License File', 'reactwoo-api-manager' ) . '</a></p>';
+            echo '</div>';
+        }
+        echo '</div>';
     }
 }

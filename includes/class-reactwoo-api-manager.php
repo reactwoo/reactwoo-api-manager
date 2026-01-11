@@ -45,6 +45,7 @@ class ReactWoo_API_Manager {
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';
+        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-email-delayed.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-product-meta.php';
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-subscription-handler.php';
 
@@ -52,6 +53,7 @@ class ReactWoo_API_Manager {
         new ReactWoo_Product_Meta();
         new ReactWoo_Subscription_Handler();
         new ReactWoo_License_Display();
+        new ReactWoo_Email_Delayed();
 
         // Initialize admin if in admin area
         if ( is_admin() ) {
