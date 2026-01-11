@@ -26,6 +26,13 @@ class ReactWoo_License_Server_API {
     private $api_key;
 
     /**
+     * Cached packages for lookups
+     *
+     * @var array|null
+     */
+    private $package_cache = null;
+
+    /**
      * Constructor
      */
     public function __construct() {
@@ -56,10 +63,81 @@ class ReactWoo_License_Server_API {
         $data = json_decode( $body, true );
 
         if ( isset( $data['success'] ) && $data['success'] && isset( $data['packages'] ) ) {
+            $this->package_cache = $data['packages'];
             return $data['packages'];
         }
 
         return new WP_Error( 'api_error', 'Failed to fetch packages from license server' );
+    }
+
+    /**
+     * Get package entry by ID (cached)
+     *
+     * @param int $package_id Package ID
+     * @return array|null|WP_Error
+     */
+    public function get_package_by_id( $package_id ) {
+        if ( ! $package_id ) {
+            return null;
+        }
+
+        if ( ! is_array( $this->package_cache ) ) {
+            $packages = $this->get_packages();
+            if ( is_wp_error( $packages ) ) {
+                return $packages;
+            }
+            $this->package_cache = $packages;
+        }
+
+        foreach ( $this->package_cache as $package ) {
+            if ( isset( $package['id'] ) && intval( $package['id'] ) === intval( $package_id ) ) {
+                return $package;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get package type for a given package ID
+     *
+     * @param int $package_id Package ID
+     * @return string|null|WP_Error
+     */
+    public function get_package_type_by_id( $package_id ) {
+        $package = $this->get_package_by_id( $package_id );
+        if ( is_wp_error( $package ) ) {
+            return $package;
+        }
+        if ( ! $package ) {
+            return null;
+        }
+        return isset( $package['package_type'] ) ? $package['package_type'] : null;
+    }
+
+    /**
+     * Find a single license matching domain and package type
+     *
+     * @param string $domain Domain name
+     * @param string $package_type Package type identifier
+     * @return array|null|WP_Error
+     */
+    public function find_license_by_domain_and_package_type( $domain, $package_type ) {
+        if ( ! $domain || ! $package_type ) {
+            return null;
+        }
+
+        $licenses = $this->get_all_licenses( array(
+            'domain' => $domain,
+            'package_type' => $package_type,
+            'status' => 'active',
+        ) );
+
+        if ( is_wp_error( $licenses ) ) {
+            return $licenses;
+        }
+
+        return ! empty( $licenses ) ? $licenses[0] : null;
     }
 
     /**
@@ -69,7 +147,7 @@ class ReactWoo_License_Server_API {
      * @param int    $package_id Package ID
      * @param string $status License status (default: 'active')
      * @param string $expires_at Expiration date (optional)
-     * @param array  $pricing_data Optional pricing data (price, currency, start_date, billing_period, billing_interval)
+     * @param array  $pricing_data Optional pricing data (price, currency, start_date, billing_period, billing_interval, renewal_frequency)
      * @return array|WP_Error
      */
     public function create_license( $domain, $package_id, $status = 'active', $expires_at = null, $pricing_data = array() ) {
@@ -102,6 +180,9 @@ class ReactWoo_License_Server_API {
             if ( isset( $pricing_data['billing_interval'] ) ) {
                 $body['billing_interval'] = intval( $pricing_data['billing_interval'] );
             }
+            if ( isset( $pricing_data['renewal_frequency'] ) ) {
+                $body['renewal_frequency'] = sanitize_text_field( $pricing_data['renewal_frequency'] );
+            }
         }
 
         if ( $this->api_key ) {
@@ -129,6 +210,54 @@ class ReactWoo_License_Server_API {
         }
 
         $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to create license';
+        return new WP_Error( 'api_error', $error_message, array( 'status' => $response_code, 'data' => $data ) );
+    }
+
+    /**
+     * Update license details via API
+     *
+     * @param int   $license_id License ID
+     * @param array $updates   Fields to update
+     * @return array|WP_Error
+     */
+    public function update_license( $license_id, $updates = array() ) {
+        if ( ! $license_id ) {
+            return new WP_Error( 'missing_license_id', 'License ID is required for updates' );
+        }
+
+        if ( empty( $updates ) ) {
+            return new WP_Error( 'missing_update_fields', 'No update data provided' );
+        }
+
+        $url = trailingslashit( $this->base_url ) . 'api/licenses/' . intval( $license_id );
+        $body = $updates;
+
+        if ( $this->api_key ) {
+            $body['api_key'] = $this->api_key;
+        }
+
+        $response = wp_remote_request( $url, array(
+            'method' => 'PUT',
+            'timeout' => 15,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode( $body ),
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $response_code = wp_remote_retrieve_response_code( $response );
+        $response_body = wp_remote_retrieve_body( $response );
+        $data = json_decode( $response_body, true );
+
+        if ( $response_code === 200 && isset( $data['success'] ) && $data['success'] && isset( $data['license'] ) ) {
+            return $data['license'];
+        }
+
+        $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to update license';
         return new WP_Error( 'api_error', $error_message, array( 'status' => $response_code, 'data' => $data ) );
     }
 
@@ -232,6 +361,15 @@ class ReactWoo_License_Server_API {
         }
         if ( isset( $args['search'] ) ) {
             $query_args['search'] = $args['search'];
+        }
+        if ( isset( $args['domain'] ) ) {
+            $query_args['domain'] = $args['domain'];
+        }
+        if ( isset( $args['package_id'] ) ) {
+            $query_args['package_id'] = intval( $args['package_id'] );
+        }
+        if ( isset( $args['package_type'] ) ) {
+            $query_args['package_type'] = $args['package_type'];
         }
         
         if ( ! empty( $query_args ) ) {

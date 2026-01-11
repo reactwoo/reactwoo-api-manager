@@ -283,9 +283,40 @@ class ReactWoo_Subscription_Handler {
             $pricing_data['renewal_frequency'] = $renewal_frequency;
         }
 
-        // Create license via API with pricing information
         $api = new ReactWoo_License_Server_API();
-        $license = $api->create_license( $domain, $package_id, 'active', $expires_at, $pricing_data );
+        $package_type = $api->get_package_type_by_id( $package_id );
+        if ( is_wp_error( $package_type ) ) {
+            error_log( 'ReactWoo API Manager: Failed to look up package type for package #' . $package_id . ' (' . $package_type->get_error_message() . ')' );
+            $package_type = null;
+        }
+
+        $license_payload = array_merge(
+            array(
+                'status' => 'active',
+                'package_id' => $package_id,
+                'expires_at' => $expires_at,
+            ),
+            $pricing_data
+        );
+
+        $license = null;
+        if ( $package_type ) {
+            $existing_license = $api->find_license_by_domain_and_package_type( $domain, $package_type );
+            if ( is_wp_error( $existing_license ) ) {
+                error_log( 'ReactWoo API Manager: Failed to look up existing license for domain ' . $domain . ' and package type ' . $package_type . ' - ' . $existing_license->get_error_message() );
+            } elseif ( $existing_license && isset( $existing_license['id'] ) ) {
+                $license = $api->update_license( $existing_license['id'], $license_payload );
+                if ( is_wp_error( $license ) ) {
+                    error_log( 'ReactWoo API Manager: Failed to update existing license #' . $existing_license['id'] . ' for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );
+                    $license = null;
+                }
+            }
+        }
+
+        if ( ! $license ) {
+            // Create license via API with pricing information
+            $license = $api->create_license( $domain, $package_id, 'active', $expires_at, $pricing_data );
+        }
 
         if ( is_wp_error( $license ) ) {
             error_log( 'ReactWoo API Manager: Failed to create license for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );
