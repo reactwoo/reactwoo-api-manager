@@ -66,6 +66,15 @@ class ReactWoo_API_Manager_Admin {
 
         add_submenu_page(
             'reactwoo-license-manager',
+            __( 'Create License Order', 'reactwoo-api-manager' ),
+            __( 'Create License Order', 'reactwoo-api-manager' ),
+            'manage_woocommerce',
+            'reactwoo-license-creator',
+            array( $this, 'render_license_creator_page' )
+        );
+
+        add_submenu_page(
+            'reactwoo-license-manager',
             __( 'Settings', 'reactwoo-api-manager' ),
             __( 'Settings', 'reactwoo-api-manager' ),
             'manage_options',
@@ -154,6 +163,10 @@ class ReactWoo_API_Manager_Admin {
         require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/views/settings.php';
     }
 
+    public function render_license_creator_page() {
+        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/views/create-license-order.php';
+    }
+
     /**
      * Add license column to subscription list
      *
@@ -185,24 +198,24 @@ class ReactWoo_API_Manager_Admin {
     }
 
     /**
-     * Process manual license creation form submission
+     * Handle submission of the license order wizard
      *
      * @return array|WP_Error|null
      */
-    public function process_manual_license_creation() {
-        if ( ! isset( $_POST['reactwoo_create_manual_license'] ) ) {
+    public function handle_license_wizard_submission() {
+        if ( empty( $_POST['reactwoo_license_wizard_submit'] ) ) {
             return null;
         }
 
-        if ( ! check_admin_referer( 'reactwoo_manual_license', 'reactwoo_manual_license_nonce' ) ) {
+        if ( ! check_admin_referer( 'reactwoo_license_wizard', 'reactwoo_license_wizard_nonce' ) ) {
             return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'reactwoo-api-manager' ) );
         }
 
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            return new WP_Error( 'permission_denied', __( 'You do not have permission to create manual licenses.', 'reactwoo-api-manager' ) );
+            return new WP_Error( 'permission_denied', __( 'You do not have permission to create licenses.', 'reactwoo-api-manager' ) );
         }
 
-        $product_id = isset( $_POST['manual_license_product'] ) ? intval( $_POST['manual_license_product'] ) : 0;
+        $product_id = isset( $_POST['wizard_product'] ) ? intval( $_POST['wizard_product'] ) : 0;
         $product = wc_get_product( $product_id );
         if ( ! $product || ! $product->exists() ) {
             return new WP_Error( 'invalid_product', __( 'Please select a valid subscription product.', 'reactwoo-api-manager' ) );
@@ -217,17 +230,44 @@ class ReactWoo_API_Manager_Admin {
             return new WP_Error( 'missing_package', __( 'This product does not have a license package assigned.', 'reactwoo-api-manager' ) );
         }
 
-        $domain = isset( $_POST['manual_license_domain'] ) ? sanitize_text_field( wp_unslash( $_POST['manual_license_domain'] ) ) : '';
+        $domain = isset( $_POST['wizard_domain'] ) ? sanitize_text_field( wp_unslash( $_POST['wizard_domain'] ) ) : '';
         if ( '' === trim( $domain ) ) {
             return new WP_Error( 'missing_domain', __( 'Please enter a license domain.', 'reactwoo-api-manager' ) );
         }
 
-        $customer_email = isset( $_POST['manual_customer_email'] ) ? sanitize_email( wp_unslash( $_POST['manual_customer_email'] ) ) : '';
+        $customer_email = isset( $_POST['wizard_customer_email'] ) ? sanitize_email( wp_unslash( $_POST['wizard_customer_email'] ) ) : '';
         if ( ! is_email( $customer_email ) ) {
             return new WP_Error( 'missing_customer', __( 'Please enter a valid customer email address.', 'reactwoo-api-manager' ) );
         }
 
-        $customer_id = isset( $_POST['manual_customer_id'] ) ? intval( $_POST['manual_customer_id'] ) : 0;
+        $customer_first = sanitize_text_field( wp_unslash( $_POST['wizard_customer_first_name'] ?? '' ) );
+        $customer_last = sanitize_text_field( wp_unslash( $_POST['wizard_customer_last_name'] ?? '' ) );
+        if ( '' === $customer_first || '' === $customer_last ) {
+            return new WP_Error( 'missing_name', __( 'Please provide the customer first and last name.', 'reactwoo-api-manager' ) );
+        }
+
+        $billing_address = $this->get_address_from_request( 'wizard_billing' );
+        if ( empty( $billing_address['address_1'] ) || empty( $billing_address['city'] ) || empty( $billing_address['postcode'] ) || empty( $billing_address['country'] ) ) {
+            return new WP_Error( 'missing_address', __( 'Please complete the required billing address fields.', 'reactwoo-api-manager' ) );
+        }
+
+        $billing_period = sanitize_text_field( wp_unslash( $_POST['wizard_billing_period'] ?? 'month' ) );
+        $allowed_periods = array( 'day', 'week', 'month', 'year' );
+        if ( ! in_array( $billing_period, $allowed_periods, true ) ) {
+            return new WP_Error( 'invalid_period', __( 'Please select a valid billing period.', 'reactwoo-api-manager' ) );
+        }
+
+        $billing_interval = isset( $_POST['wizard_billing_interval'] ) ? intval( $_POST['wizard_billing_interval'] ) : 1;
+        if ( $billing_interval <= 0 ) {
+            return new WP_Error( 'invalid_interval', __( 'Billing interval must be greater than 0.', 'reactwoo-api-manager' ) );
+        }
+
+        $price = isset( $_POST['wizard_price'] ) ? floatval( wp_unslash( $_POST['wizard_price'] ) ) : floatval( $product->get_price() );
+        if ( $price <= 0 ) {
+            $price = floatval( $product->get_price() );
+        }
+
+        $customer_id = isset( $_POST['wizard_customer_id'] ) ? intval( $_POST['wizard_customer_id'] ) : 0;
         $customer = $customer_id ? get_user_by( 'id', $customer_id ) : get_user_by( 'email', $customer_email );
 
         if ( ! $customer ) {
@@ -258,23 +298,37 @@ class ReactWoo_API_Manager_Admin {
             return new WP_Error( 'customer_load_failed', __( 'Unable to load the WooCommerce customer.', 'reactwoo-api-manager' ) );
         }
 
+        wp_update_user( array(
+            'ID'         => $wc_customer->get_id(),
+            'first_name' => $customer_first,
+            'last_name'  => $customer_last,
+        ) );
+
         $order = wc_create_order( array( 'customer_id' => $wc_customer->get_id() ) );
         if ( is_wp_error( $order ) ) {
             return $order;
         }
 
         $order->add_product( $product, 1, array(
-            'subtotal' => $product->get_price(),
-            'total'    => $product->get_price(),
+            'subtotal' => $price,
+            'total'    => $price,
         ) );
 
-        $order->set_address( $this->get_customer_address_for_order( $wc_customer, 'billing' ), 'billing' );
-        $order->set_address( $this->get_customer_address_for_order( $wc_customer, 'shipping' ), 'shipping' );
+        $order->set_address( array_merge( $billing_address, array(
+            'first_name' => $customer_first,
+            'last_name'  => $customer_last,
+            'company'    => sanitize_text_field( wp_unslash( $_POST['wizard_billing_company'] ?? '' ) ),
+            'email'      => $customer_email,
+        ) ), 'billing' );
+        $order->set_address( array_merge( $billing_address, array(
+            'first_name' => $customer_first,
+            'last_name'  => $customer_last,
+        ) ), 'shipping' );
         $order->set_currency( get_woocommerce_currency() );
         $order->update_meta_data( '_reactwoo_domain', $domain );
         $order->set_payment_method( 'manual' );
         $order->set_payment_method_title( __( 'Manual license creation', 'reactwoo-api-manager' ) );
-        $order->calculate_totals();
+        $order->calculate_totals( true );
         $order->save();
 
         if ( ! function_exists( 'wcs_create_subscription' ) ) {
@@ -282,12 +336,12 @@ class ReactWoo_API_Manager_Admin {
         }
 
         $subscription = wcs_create_subscription( array(
-            'customer_id'     => $wc_customer->get_id(),
-            'status'          => 'active',
-            'order_id'        => $order->get_id(),
-            'start_date'      => current_time( 'mysql' ),
-            'billing_period'  => method_exists( $product, 'get_billing_period' ) ? $product->get_billing_period() : $product->get_meta( '_subscription_period' ),
-            'billing_interval'=> method_exists( $product, 'get_billing_interval' ) ? $product->get_billing_interval() : $product->get_meta( '_subscription_interval' ),
+            'customer_id'      => $wc_customer->get_id(),
+            'status'           => 'active',
+            'order_id'         => $order->get_id(),
+            'start_date'       => current_time( 'mysql' ),
+            'billing_period'   => $billing_period,
+            'billing_interval' => $billing_interval,
         ) );
 
         if ( is_wp_error( $subscription ) ) {
@@ -295,16 +349,21 @@ class ReactWoo_API_Manager_Admin {
         }
 
         $subscription->add_product( $product, 1, array(
-            'subtotal' => $product->get_price(),
-            'total'    => $product->get_price(),
+            'subtotal' => $price,
+            'total'    => $price,
         ) );
         $subscription->set_parent_id( $order->get_id() );
         $subscription->calculate_totals();
+        $subscription->update_meta_data( '_reactwoo_domain', $domain );
         $subscription->save();
         $subscription->update_status( 'active' );
 
-        $order->add_order_note( __( 'ReactWoo license manager created this order.', 'reactwoo-api-manager' ) );
-        $order->payment_complete( __( 'Created via ReactWoo License Manager', 'reactwoo-api-manager' ) );
+        $order->add_order_note( __( 'ReactWoo license wizard created this order.', 'reactwoo-api-manager' ) );
+        $order_note = isset( $_POST['wizard_order_note'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wizard_order_note'] ) ) : '';
+        if ( $order_note ) {
+            $order->add_order_note( $order_note );
+        }
+        $order->payment_complete( __( 'Created via ReactWoo License Wizard', 'reactwoo-api-manager' ) );
 
         return array(
             'order_id'        => $order->get_id(),
@@ -345,6 +404,34 @@ class ReactWoo_API_Manager_Admin {
             } else {
                 $fallback = 'get_' . $field;
                 $address[ $field ] = method_exists( $customer, $fallback ) ? $customer->{$fallback}() : '';
+            }
+        }
+
+        return array_filter( $address );
+    }
+
+    /**
+     * Build an address array from submitted wizard fields
+     *
+     * @param string $prefix Field prefix (e.g., wizard_billing)
+     * @return array
+     */
+    private function get_address_from_request( $prefix ) {
+        $fields = array(
+            'address_1',
+            'address_2',
+            'city',
+            'state',
+            'postcode',
+            'country',
+            'company',
+        );
+
+        $address = array();
+        foreach ( $fields as $field ) {
+            $key = $prefix . '_' . $field;
+            if ( isset( $_POST[ $key ] ) ) {
+                $address[ $field ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
             }
         }
 
