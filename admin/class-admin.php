@@ -253,7 +253,7 @@ class ReactWoo_API_Manager_Admin {
             return new WP_Error( 'customer_not_found', __( 'Unable to load the specified customer.', 'reactwoo-api-manager' ) );
         }
 
-        $wc_customer = wc_get_customer( $customer->ID );
+        $wc_customer = $this->get_wc_customer_instance( $customer->ID );
         if ( ! $wc_customer ) {
             return new WP_Error( 'customer_load_failed', __( 'Unable to load the WooCommerce customer.', 'reactwoo-api-manager' ) );
         }
@@ -370,6 +370,31 @@ class ReactWoo_API_Manager_Admin {
         );
 
         return wc_get_products( $args );
+    }
+
+    /**
+     * Safely load a WC_Customer instance
+     *
+     * @param int $customer_id
+     * @return false|WC_Customer
+     */
+    private function get_wc_customer_instance( $customer_id ) {
+        if ( ! $customer_id ) {
+            return false;
+        }
+
+        if ( function_exists( 'wc_get_customer' ) ) {
+            $customer = wc_get_customer( $customer_id );
+            if ( $customer instanceof WC_Customer ) {
+                return $customer;
+            }
+        }
+
+        if ( class_exists( 'WC_Customer' ) ) {
+            return new WC_Customer( $customer_id );
+        }
+
+        return false;
     }
 
 }
