@@ -23,7 +23,7 @@ class ReactWoo_Subscription_Handler {
         add_action( 'woocommerce_subscription_status_updated', array( $this, 'handle_subscription_status_change' ), 10, 3 );
         
         // Hook into order completion to create license for initial subscription
-        add_action( 'woocommerce_order_status_completed', array( $this, 'maybe_create_license_on_order_completion' ), 10, 1 );
+        add_action( 'woocommerce_order_status_completed', array( $this, 'maybe_create_license_on_order_completion' ), 5, 1 );
         
         // Hook into renewal order completion
         add_action( 'woocommerce_subscription_renewal_payment_complete', array( $this, 'handle_subscription_renewal' ), 10, 2 );

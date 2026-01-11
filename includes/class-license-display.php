@@ -12,7 +12,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ReactWoo_License_Display {
 
     public function __construct() {
-        add_action( 'woocommerce_email_after_order_table', array( $this, 'maybe_add_license_to_email' ), 10, 4 );
+        add_filter( 'woocommerce_email_order_meta_fields', array( $this, 'add_license_order_meta' ), 10, 3 );
+        add_action( 'woocommerce_email_after_order_table', array( $this, 'maybe_add_license_to_email' ), 20, 4 );
         add_action( 'woocommerce_order_details_after_order_table', array( $this, 'print_license_on_order_page' ), 15, 1 );
         add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
         add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
@@ -134,5 +135,38 @@ class ReactWoo_License_Display {
         echo '<p style="font-size:18px;font-family:monospace;background:#fff;padding:12px;border:1px dashed #dcdcdc;border-radius:4px;margin-bottom:8px;">' . esc_html( $license['key'] ) . '</p>';
         echo $domain_line;
         echo '</div>';
+    }
+
+    /**
+     * Add license meta field to completed-order emails.
+     *
+     * @param array    $fields
+     * @param bool     $sent_to_admin
+     * @param WC_Order $order
+     * @return array
+     */
+    public function add_license_order_meta( $fields, $sent_to_admin, $order ) {
+        if ( ! $order instanceof WC_Order ) {
+            return $fields;
+        }
+
+        $license = $this->get_order_license_data( $order );
+        if ( empty( $license ) ) {
+            return $fields;
+        }
+
+        $fields['reactwoo_license_key'] = array(
+            'label' => __( 'License Key', 'reactwoo-api-manager' ),
+            'value' => $license['key'],
+        );
+
+        if ( ! empty( $license['domain'] ) ) {
+            $fields['reactwoo_license_domain'] = array(
+                'label' => __( 'License Domain', 'reactwoo-api-manager' ),
+                'value' => $license['domain'],
+            );
+        }
+
+        return $fields;
     }
 }
