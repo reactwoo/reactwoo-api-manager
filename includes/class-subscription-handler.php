@@ -429,6 +429,47 @@ class ReactWoo_Subscription_Handler {
             }
         }
 
+        // Fallback: if we don't have IDs saved locally, try to locate license by domain+package_type and deactivate.
+        if ( empty( $license_ids ) ) {
+            $domain = $order->get_meta( '_reactwoo_domain', true );
+            if ( $domain ) {
+                $package_ids = array();
+                if ( function_exists( 'wcs_get_subscriptions_for_order' ) ) {
+                    $subscriptions = wcs_get_subscriptions_for_order( $order->get_id() );
+                    foreach ( $subscriptions as $subscription ) {
+                        foreach ( $subscription->get_items() as $item ) {
+                            $product = $item->get_product();
+                            if ( $product ) {
+                                $package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
+                                if ( $package_id ) {
+                                    $package_ids[] = $package_id;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $package_ids = array_unique( array_filter( $package_ids ) );
+                if ( ! empty( $package_ids ) ) {
+                    $api = new ReactWoo_License_Server_API();
+                    $licenses = $api->get_licenses_by_domain( $domain );
+                    if ( ! is_wp_error( $licenses ) && is_array( $licenses ) ) {
+                        foreach ( $package_ids as $pid ) {
+                            $ptype = $api->get_package_type_by_id( $pid );
+                            if ( is_wp_error( $ptype ) || ! $ptype ) {
+                                continue;
+                            }
+                            foreach ( $licenses as $l ) {
+                                if ( isset( $l['package_type'] ) && $l['package_type'] === $ptype && isset( $l['id'] ) ) {
+                                    $license_ids[] = $l['id'];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return $license_ids;
     }
 

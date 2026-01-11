@@ -109,11 +109,39 @@ class ReactWoo_License_Display {
         $package_id = $subscription->get_meta( '_reactwoo_license_package_id', true );
         $license_key = $subscription->get_meta( '_reactwoo_license_key', true );
 
-        if ( $license_key && $domain && $package_id ) {
+        // Fallbacks for older data (or when meta wasn't saved correctly):
+        // - domain may exist only on parent order as _reactwoo_domain
+        // - package_id may exist only on product meta
+        if ( ! $domain ) {
+            $parent_order = $subscription->get_parent();
+            if ( $parent_order instanceof WC_Order ) {
+                $domain = $parent_order->get_meta( '_reactwoo_domain', true );
+            }
+        }
+
+        if ( ! $package_id ) {
+            foreach ( $subscription->get_items() as $item ) {
+                $product = $item->get_product();
+                if ( $product ) {
+                    $maybe_package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
+                    if ( $maybe_package_id ) {
+                        $package_id = $maybe_package_id;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If we can identify domain+package, fetch from server (cached).
+        if ( $domain && $package_id ) {
             $license = $this->get_cached_license( $domain, $package_id );
             if ( $license ) {
                 return $license;
             }
+        }
+
+        // Final fallback to local meta
+        if ( $license_key ) {
             return array(
                 'key'    => $license_key,
                 'domain' => $domain,
@@ -157,13 +185,26 @@ class ReactWoo_License_Display {
             return null;
         }
 
-        $license = $api->find_license_by_domain_and_package_type( $domain, $package_type );
-        if ( is_wp_error( $license ) || empty( $license ) ) {
+        // Use domain endpoint (no API key required) as source-of-truth for customer UI.
+        $licenses = $api->get_licenses_by_domain( $domain );
+        if ( is_wp_error( $licenses ) || empty( $licenses ) ) {
+            return null;
+        }
+
+        $license = null;
+        foreach ( $licenses as $l ) {
+            if ( isset( $l['package_type'] ) && $l['package_type'] === $package_type && ( ! isset( $l['status'] ) || $l['status'] === 'active' ) ) {
+                $license = $l;
+                break;
+            }
+        }
+
+        if ( ! $license ) {
             return null;
         }
 
         $value = array(
-            'key'    => isset( $license['license_key'] ) ? $license['license_key'] : '',
+            'key'    => isset( $license['license_key'] ) ? $license['license_key'] : ( isset( $license['licenseKey'] ) ? $license['licenseKey'] : '' ),
             'domain' => isset( $license['domain'] ) ? $license['domain'] : $domain,
         );
 
@@ -258,21 +299,28 @@ class ReactWoo_License_Display {
             return;
         }
 
-        $license_key = get_post_meta( intval( $download ), '_reactwoo_license_key', true ) ?: get_post_meta( intval( $download ), '_reactwoo_license_label', true );
-        $domain = get_post_meta( intval( $download ), '_reactwoo_license_domain', true );
-
-        if ( ! $license_key ) {
+        // Treat download param as subscription ID and validate ownership.
+        $subscription = function_exists( 'wcs_get_subscription' ) ? wcs_get_subscription( intval( $download ) ) : null;
+        if ( ! $subscription || ! ( $subscription instanceof WC_Subscription ) ) {
+            return;
+        }
+        if ( intval( $subscription->get_customer_id() ) !== intval( get_current_user_id() ) ) {
             return;
         }
 
-        $filename = 'reactwoo-license-' . sanitize_file_name( $license_key ) . '.txt';
+        $license = $this->get_subscription_license_data( $subscription );
+        if ( ! $license || empty( $license['key'] ) ) {
+            return;
+        }
+
+        $filename = 'reactwoo-license-' . sanitize_file_name( $license['key'] ) . '.txt';
         header( 'Content-Type: text/plain' );
         header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
 
         echo "ReactWoo License\n";
-        echo "License Key: {$license_key}\n";
-        if ( $domain ) {
-            echo "Domain: {$domain}\n";
+        echo "License Key: {$license['key']}\n";
+        if ( ! empty( $license['domain'] ) ) {
+            echo "Domain: {$license['domain']}\n";
         }
         echo "\nInstructions:\n";
         echo "1. Install the license key on your ReactWoo product.\n";

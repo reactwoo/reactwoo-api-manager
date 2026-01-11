@@ -205,7 +205,10 @@ class ReactWoo_License_Server_API {
         $response_body = wp_remote_retrieve_body( $response );
         $data = json_decode( $response_body, true );
 
-        if ( $response_code === 201 && isset( $data['success'] ) && $data['success'] ) {
+        // License server returns:
+        // - 201 Created for new licenses
+        // - 200 OK for "upgrade" (upsert) of an existing license
+        if ( in_array( $response_code, array( 200, 201 ), true ) && isset( $data['success'] ) && $data['success'] && isset( $data['license'] ) ) {
             return $data['license'];
         }
 
