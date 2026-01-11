@@ -39,6 +39,9 @@ class ReactWoo_Subscription_Handler {
         // Add domain field to order admin
         add_action( 'woocommerce_admin_order_data_after_billing_address', array( $this, 'display_order_domain_field' ), 10, 1 );
         add_action( 'woocommerce_process_shop_order_meta', array( $this, 'save_order_domain_field' ), 10, 1 );
+
+        add_action( 'wp_trash_post', array( $this, 'handle_order_trashed' ), 10, 1 );
+        add_action( 'before_delete_post', array( $this, 'handle_order_deleted' ), 10, 1 );
     }
 
     /**
@@ -346,6 +349,52 @@ class ReactWoo_Subscription_Handler {
 
         // Log the creation
         error_log( 'ReactWoo API Manager: License created for subscription #' . $subscription->get_id() . ' - License Key: ' . $license['license_key'] );
+    }
+
+    /**
+     * Handle order moving to trash.
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_order_trashed( $post_id ) {
+        if ( get_post_type( $post_id ) !== 'shop_order' ) {
+            return;
+        }
+        $this->deactivate_order_license( $post_id );
+    }
+
+    /**
+     * Handle order deletion.
+     *
+     * @param int $post_id Post ID
+     */
+    public function handle_order_deleted( $post_id ) {
+        if ( get_post_type( $post_id ) !== 'shop_order' ) {
+            return;
+        }
+        $this->deactivate_order_license( $post_id );
+    }
+
+    /**
+     * Deactivate license associated with an order.
+     *
+     * @param int $order_id Order ID
+     */
+    private function deactivate_order_license( $order_id ) {
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return;
+        }
+        $license_id = $order->get_meta( '_reactwoo_license_id' );
+        if ( ! $license_id ) {
+            return;
+        }
+
+        $api = new ReactWoo_License_Server_API();
+        $result = $api->update_license_status( $license_id, 'inactive' );
+        if ( is_wp_error( $result ) ) {
+            error_log( 'ReactWoo API Manager: Failed to deactivate license #' . $license_id . ' after order deletion - ' . $result->get_error_message() );
+        }
     }
 
     /**
