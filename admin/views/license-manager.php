@@ -24,6 +24,19 @@ if ( isset( $_GET['action'] ) && isset( $_GET['subscription_id'] ) && check_admi
     }
 }
 
+$manual_license_result = $this->process_manual_license_creation();
+$subscription_products = $this->get_license_subscription_products();
+$license_api = new ReactWoo_License_Server_API();
+$package_map = array();
+$packages = $license_api->get_packages();
+if ( ! is_wp_error( $packages ) && is_array( $packages ) ) {
+    foreach ( $packages as $package ) {
+        if ( isset( $package['id'] ) ) {
+            $package_map[ intval( $package['id'] ) ] = $package;
+        }
+    }
+}
+
 // Get all subscriptions with licenses
 $subscriptions_query = new WP_Query( array(
     'post_type' => 'shop_subscription',
@@ -40,6 +53,81 @@ $subscriptions_query = new WP_Query( array(
 <div class="wrap">
     <h1><?php esc_html_e( 'License Manager', 'reactwoo-api-manager' ); ?></h1>
     <p><?php esc_html_e( 'Manage licenses associated with WooCommerce subscriptions.', 'reactwoo-api-manager' ); ?></p>
+
+    <?php if ( $manual_license_result ) : ?>
+        <div class="notice <?php echo is_wp_error( $manual_license_result ) ? 'notice-error' : 'notice-success'; ?> inline">
+            <p>
+                <?php
+                if ( is_wp_error( $manual_license_result ) ) {
+                    echo esc_html( $manual_license_result->get_error_message() );
+                } else {
+                    echo esc_html( $manual_license_result['message'] );
+                    if ( isset( $manual_license_result['order_id'] ) ) {
+                        echo '<br />';
+                        printf(
+                            esc_html__( 'Order #%1$d and Subscription #%2$d have been created. The license creation process will run automatically once the subscription is active.', 'reactwoo-api-manager' ),
+                            intval( $manual_license_result['order_id'] ),
+                            intval( $manual_license_result['subscription_id'] )
+                        );
+                    }
+                }
+                ?>
+            </p>
+        </div>
+    <?php endif; ?>
+
+    <div class="reactwoo-manual-order-panel" style="background: #fff; border: 1px solid #dcdcdc; padding: 24px; margin: 20px 0; border-radius: 6px;">
+        <h2><?php esc_html_e( 'Generate License Order', 'reactwoo-api-manager' ); ?></h2>
+        <p><?php esc_html_e( 'Create the order, domain, and subscription in one step so the license creation workflow runs automatically.', 'reactwoo-api-manager' ); ?></p>
+        <form method="post">
+            <?php wp_nonce_field( 'reactwoo_manual_license', 'reactwoo_manual_license_nonce' ); ?>
+            <table class="form-table">
+                <tbody>
+                    <tr>
+                        <th scope="row">
+                            <label for="manual_customer_email"><?php esc_html_e( 'Customer Email', 'reactwoo-api-manager' ); ?></label>
+                        </th>
+                        <td>
+                            <input type="email" id="manual_customer_email" name="manual_customer_email" class="regular-text" required value="<?php echo isset( $_POST['manual_customer_email'] ) ? esc_attr( sanitize_email( wp_unslash( $_POST['manual_customer_email'] ) ) ) : ''; ?>" />
+                            <p class="description"><?php esc_html_e( 'Use an existing customer email or enter a new one (a customer account will be created automatically).', 'reactwoo-api-manager' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="manual_license_product"><?php esc_html_e( 'Subscription Product', 'reactwoo-api-manager' ); ?></label>
+                        </th>
+                        <td>
+                            <select id="manual_license_product" name="manual_license_product">
+                                <option value=""><?php esc_html_e( '-- Select a subscription product --', 'reactwoo-api-manager' ); ?></option>
+                                <?php foreach ( $subscription_products as $product ) : ?>
+                                    <?php
+                                        $product_id = $product->get_id();
+                                        $selected = isset( $_POST['manual_license_product'] ) && intval( $_POST['manual_license_product'] ) === $product_id;
+                                        $package_id = get_post_meta( $product_id, '_reactwoo_license_package_id', true );
+                                        $package_name = $package_id && isset( $package_map[ intval( $package_id ) ] ) ? $package_map[ intval( $package_id ) ]['name'] : __( 'No license package assigned', 'reactwoo-api-manager' );
+                                    ?>
+                                    <option value="<?php echo esc_attr( $product_id ); ?>" <?php selected( $selected ); ?>>
+                                        <?php echo esc_html( $product->get_name() . ' — ' . $package_name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'The chosen product must already be linked to a license package type.', 'reactwoo-api-manager' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="manual_license_domain"><?php esc_html_e( 'License Domain', 'reactwoo-api-manager' ); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" id="manual_license_domain" name="manual_license_domain" class="regular-text" required value="<?php echo isset( $_POST['manual_license_domain'] ) ? esc_attr( sanitize_text_field( wp_unslash( $_POST['manual_license_domain'] ) ) ) : ''; ?>" />
+                            <p class="description"><?php esc_html_e( 'Enter the domain that should be associated with this license.', 'reactwoo-api-manager' ); ?></p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <?php submit_button( __( 'Create Order & Subscription', 'reactwoo-api-manager' ), 'primary', 'reactwoo_create_manual_license' ); ?>
+        </form>
+    </div>
 
     <div class="reactwoo-license-manager">
         <table class="wp-list-table widefat fixed striped">
