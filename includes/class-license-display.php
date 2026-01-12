@@ -367,15 +367,17 @@ class ReactWoo_License_Display {
         header( 'Content-Type: text/plain' );
         header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
 
-        echo "ReactWoo License\n";
-        echo "License Key: {$license['key']}\n";
-        if ( ! empty( $license['domain'] ) ) {
-            echo "Domain: {$license['domain']}\n";
-        }
-        echo "\nInstructions:\n";
-        echo "1. Install the license key on your ReactWoo product.\n";
-        echo "2. Activate the plugin on the domain above.\n";
-        echo "3. Contact support if you need help.\n";
+        echo "Google Reviews Pro \u2013 License Details\n\n";
+        echo "Your Google Reviews Pro license is active and ready to use.\n\n";
+        echo "License Key\n";
+        echo $license['key'] . "\n\n";
+        echo "Registered Domain\n";
+        echo ( ! empty( $license['domain'] ) ? $license['domain'] : '' ) . "\n\n";
+        echo "How to use your license\n\n";
+        echo "Paste the license key into the License section of the Google Reviews Pro plugin.\n\n";
+        echo "Activate the plugin on the registered domain above.\n\n";
+        echo "Enjoy all Pro features\n\n";
+        echo "If you need to move your license, change domains, or need any help, our support team is here to assist you.\n";
         exit;
     }
 
