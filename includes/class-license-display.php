@@ -88,14 +88,47 @@ class ReactWoo_License_Display {
         }
 
         $license_key = $order->get_meta( '_reactwoo_license_key' );
-        if ( ! $license_key ) {
+        $license_domain = $order->get_meta( '_reactwoo_license_domain' );
+        if ( $license_key ) {
+            return array(
+                'key'    => $license_key,
+                'domain' => $license_domain,
+            );
+        }
+
+        // Fallback: derive domain+package from the order and fetch from server (cached).
+        $domain = $order->get_meta( '_reactwoo_domain', true );
+        if ( ! $domain ) {
             return null;
         }
 
-        return array(
-            'key'    => $license_key,
-            'domain' => $order->get_meta( '_reactwoo_license_domain' ),
-        );
+        $package_id = null;
+        foreach ( $order->get_items() as $item ) {
+            $product = $item->get_product();
+            if ( $product ) {
+                $maybe_package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
+                if ( $maybe_package_id ) {
+                    $package_id = $maybe_package_id;
+                    break;
+                }
+            }
+        }
+
+        if ( ! $package_id ) {
+            return null;
+        }
+
+        $license = $this->get_cached_license( $domain, $package_id );
+        if ( ! $license ) {
+            return null;
+        }
+
+        // Backfill order meta for future use (email templates/admin list)
+        $order->update_meta_data( '_reactwoo_license_key', $license['key'] );
+        $order->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
+        $order->save();
+
+        return $license;
     }
 
     /**
@@ -250,6 +283,11 @@ class ReactWoo_License_Display {
 
         $license = $this->get_order_license_data( $order );
         if ( empty( $license ) ) {
+            // Always show the field (even if pending), per UX request.
+            $fields['reactwoo_license_key'] = array(
+                'label' => __( 'License Key', 'reactwoo-api-manager' ),
+                'value' => __( 'Pending — please check My Account → License shortly.', 'reactwoo-api-manager' ),
+            );
             return $fields;
         }
 
@@ -372,8 +410,9 @@ class ReactWoo_License_Display {
 
         $subscriptions = wcs_get_users_subscriptions( array( 'user_id' => get_current_user_id() ) );
         foreach ( $subscriptions as $subscription ) {
-            $license_key = $subscription->get_meta( '_reactwoo_license_key', true );
-            if ( ! $license_key ) {
+            // Use server as source-of-truth (cached). If meta is missing, we can still show the license.
+            $license = $this->get_subscription_license_data( $subscription );
+            if ( ! $license || empty( $license['key'] ) ) {
                 continue;
             }
 
@@ -384,11 +423,20 @@ class ReactWoo_License_Display {
             }
 
             $licenses[] = array(
-                'key'    => $license_key,
-                'domain' => $subscription->get_meta( '_reactwoo_license_domain', true ),
+                'key'    => $license['key'],
+                'domain' => isset( $license['domain'] ) ? $license['domain'] : '',
                 'name'   => $product_name,
                 'id'     => $subscription->get_id(),
             );
+
+            // Self-heal: persist meta back to subscription when we successfully discovered a license.
+            if ( ! $subscription->get_meta( '_reactwoo_license_key', true ) ) {
+                $subscription->update_meta_data( '_reactwoo_license_key', $license['key'] );
+                if ( ! empty( $license['domain'] ) ) {
+                    $subscription->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
+                }
+                $subscription->save();
+            }
         }
 
         return $licenses;

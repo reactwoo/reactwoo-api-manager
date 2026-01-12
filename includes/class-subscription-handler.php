@@ -42,6 +42,12 @@ class ReactWoo_Subscription_Handler {
 
         add_action( 'wp_trash_post', array( $this, 'handle_order_trashed' ), 10, 1 );
         add_action( 'before_delete_post', array( $this, 'handle_order_deleted' ), 10, 1 );
+
+        // HPOS-safe hooks (WooCommerce order lifecycle)
+        add_action( 'woocommerce_before_trash_order', array( $this, 'handle_wc_order_trashed' ), 10, 1 );
+        add_action( 'woocommerce_trash_order', array( $this, 'handle_wc_order_trashed' ), 10, 1 );
+        add_action( 'woocommerce_before_delete_order', array( $this, 'handle_wc_order_deleted' ), 10, 1 );
+        add_action( 'woocommerce_delete_order', array( $this, 'handle_wc_order_deleted' ), 10, 1 );
     }
 
     /**
@@ -373,6 +379,14 @@ class ReactWoo_Subscription_Handler {
             return;
         }
         $this->deactivate_order_license( $post_id );
+    }
+
+    public function handle_wc_order_trashed( $order_id ) {
+        $this->deactivate_order_license( intval( $order_id ) );
+    }
+
+    public function handle_wc_order_deleted( $order_id ) {
+        $this->deactivate_order_license( intval( $order_id ) );
     }
 
     /**
