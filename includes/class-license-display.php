@@ -420,7 +420,14 @@ class ReactWoo_License_Display {
             return $licenses;
         }
 
-        $subscriptions = wcs_get_users_subscriptions( array( 'user_id' => get_current_user_id() ) );
+        // wcs_get_users_subscriptions signature differs by version:
+        // - Newer: wcs_get_users_subscriptions( $user_id )
+        // - Some wrappers accept arrays, but not reliably
+        $user_id = get_current_user_id();
+        $subscriptions = wcs_get_users_subscriptions( $user_id );
+        if ( ! is_array( $subscriptions ) ) {
+            $subscriptions = array();
+        }
         foreach ( $subscriptions as $subscription ) {
             // Use server as source-of-truth (cached). If meta is missing, we can still show the license.
             $license = $this->get_subscription_license_data( $subscription );
