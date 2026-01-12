@@ -157,6 +157,10 @@ class ReactWoo_License_Display {
                 $product = $item->get_product();
                 if ( $product ) {
                     $maybe_package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
+                    // If this is a variation and package isn't set on the variation, check parent.
+                    if ( ! $maybe_package_id && method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
+                        $maybe_package_id = get_post_meta( $product->get_parent_id(), '_reactwoo_license_package_id', true );
+                    }
                     if ( $maybe_package_id ) {
                         $package_id = $maybe_package_id;
                         break;
@@ -214,8 +218,8 @@ class ReactWoo_License_Display {
 
         $api = new ReactWoo_License_Server_API();
         $package_type = $api->get_package_type_by_id( $package_id );
-        if ( is_wp_error( $package_type ) || ! $package_type ) {
-            return null;
+        if ( is_wp_error( $package_type ) ) {
+            $package_type = null;
         }
 
         // Use domain endpoint (no API key required) as source-of-truth for customer UI.
@@ -226,7 +230,15 @@ class ReactWoo_License_Display {
 
         $license = null;
         foreach ( $licenses as $l ) {
-            if ( isset( $l['package_type'] ) && $l['package_type'] === $package_type && ( ! isset( $l['status'] ) || $l['status'] === 'active' ) ) {
+            // Prefer matching by package_type when available, otherwise fallback to package_id
+            $matches = false;
+            if ( $package_type && isset( $l['package_type'] ) ) {
+                $matches = ( $l['package_type'] === $package_type );
+            } elseif ( isset( $l['package_id'] ) ) {
+                $matches = ( intval( $l['package_id'] ) === intval( $package_id ) );
+            }
+
+            if ( $matches && ( ! isset( $l['status'] ) || $l['status'] === 'active' ) ) {
                 $license = $l;
                 break;
             }

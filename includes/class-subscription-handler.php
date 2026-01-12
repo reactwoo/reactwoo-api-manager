@@ -470,11 +470,18 @@ class ReactWoo_Subscription_Handler {
                     if ( ! is_wp_error( $licenses ) && is_array( $licenses ) ) {
                         foreach ( $package_ids as $pid ) {
                             $ptype = $api->get_package_type_by_id( $pid );
-                            if ( is_wp_error( $ptype ) || ! $ptype ) {
-                                continue;
+                            if ( is_wp_error( $ptype ) ) {
+                                $ptype = null;
                             }
                             foreach ( $licenses as $l ) {
-                                if ( isset( $l['package_type'] ) && $l['package_type'] === $ptype && isset( $l['id'] ) ) {
+                                $matches = false;
+                                if ( $ptype && isset( $l['package_type'] ) ) {
+                                    $matches = ( $l['package_type'] === $ptype );
+                                } elseif ( isset( $l['package_id'] ) ) {
+                                    $matches = ( intval( $l['package_id'] ) === intval( $pid ) );
+                                }
+
+                                if ( $matches && isset( $l['id'] ) ) {
                                     $license_ids[] = $l['id'];
                                 }
                             }

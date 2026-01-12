@@ -9,124 +9,153 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Handle actions
-if ( isset( $_GET['action'] ) && isset( $_GET['subscription_id'] ) && check_admin_referer( 'reactwoo_license_action' ) ) {
-    $subscription_id = intval( $_GET['subscription_id'] );
-    $subscription = wcs_get_subscription( $subscription_id );
-    
-    if ( $subscription ) {
-        switch ( $_GET['action'] ) {
-            case 'sync_license':
-                // Sync license information from server
-                $this->sync_license_from_server( $subscription );
-                break;
-        }
+// Fetch licenses from the server as source-of-truth (cached for admin UX)
+$licenses_cache_key = 'reactwoo_admin_licenses_cache_v1';
+$licenses_cache_ttl = 2 * MINUTE_IN_SECONDS;
+$licenses = null;
+$licenses_error = null;
+
+if ( isset( $_POST['reactwoo_refresh_server_licenses'] ) && check_admin_referer( 'reactwoo_refresh_server_licenses', 'reactwoo_refresh_server_licenses_nonce' ) ) {
+    delete_transient( $licenses_cache_key );
+}
+
+$licenses = get_transient( $licenses_cache_key );
+if ( false === $licenses ) {
+    $api = new ReactWoo_License_Server_API();
+    $licenses = $api->get_all_licenses();
+    if ( is_wp_error( $licenses ) ) {
+        $licenses_error = $licenses;
+        $licenses = array();
+    } else {
+        set_transient( $licenses_cache_key, $licenses, $licenses_cache_ttl );
     }
 }
 
-// Get all subscriptions with licenses
-$subscriptions_query = new WP_Query( array(
-    'post_type' => 'shop_subscription',
-    'posts_per_page' => -1,
-    'post_status' => 'any',
-    'meta_query' => array(
-        array(
-            'key' => '_reactwoo_license_key',
-            'compare' => 'EXISTS',
-        ),
-    ),
-) );
+// Build a lightweight map of local subscriptions by license key (optional, only if meta exists)
+$subscription_by_license_key = array();
+if ( function_exists( 'wcs_get_subscriptions' ) ) {
+    $local_subs = wcs_get_subscriptions( array(
+        'limit'  => -1,
+        'status' => 'any',
+    ) );
+    foreach ( $local_subs as $sub ) {
+        $k = $sub->get_meta( '_reactwoo_license_key', true );
+        if ( $k ) {
+            $subscription_by_license_key[ $k ] = $sub;
+        }
+    }
+}
 ?>
 <div class="wrap">
     <h1><?php esc_html_e( 'License Manager', 'reactwoo-api-manager' ); ?></h1>
-    <p><?php esc_html_e( 'Manage licenses associated with WooCommerce subscriptions.', 'reactwoo-api-manager' ); ?></p>
+    <p><?php esc_html_e( 'Licenses shown below are pulled from the license server (cached briefly).', 'reactwoo-api-manager' ); ?></p>
+
+    <form method="post" style="margin: 12px 0 18px;">
+        <?php wp_nonce_field( 'reactwoo_refresh_server_licenses', 'reactwoo_refresh_server_licenses_nonce' ); ?>
+        <?php submit_button( __( 'Refresh from Server', 'reactwoo-api-manager' ), 'secondary', 'reactwoo_refresh_server_licenses', false ); ?>
+        <span class="description" style="margin-left: 8px;">
+            <?php esc_html_e( 'Cache duration: ~2 minutes.', 'reactwoo-api-manager' ); ?>
+        </span>
+    </form>
+
+    <?php if ( $licenses_error ) : ?>
+        <div class="notice notice-error">
+            <p>
+                <?php echo esc_html( sprintf( __( 'Error fetching licenses from server: %s', 'reactwoo-api-manager' ), $licenses_error->get_error_message() ) ); ?>
+            </p>
+            <?php if ( $licenses_error->get_error_code() === 'api_auth_error' ) : ?>
+                <p>
+                    <?php esc_html_e( 'Tip: Configure your API key in ReactWoo Licenses → Settings to allow server-wide license listing.', 'reactwoo-api-manager' ); ?>
+                </p>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 
     <div class="reactwoo-license-manager">
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Subscription', 'reactwoo-api-manager' ); ?></th>
-                    <th><?php esc_html_e( 'Customer', 'reactwoo-api-manager' ); ?></th>
+                    <th><?php esc_html_e( 'License', 'reactwoo-api-manager' ); ?></th>
                     <th><?php esc_html_e( 'License Key', 'reactwoo-api-manager' ); ?></th>
                     <th><?php esc_html_e( 'Domain', 'reactwoo-api-manager' ); ?></th>
+                    <th><?php esc_html_e( 'Package', 'reactwoo-api-manager' ); ?></th>
                     <th><?php esc_html_e( 'Status', 'reactwoo-api-manager' ); ?></th>
-                    <th><?php esc_html_e( 'Created', 'reactwoo-api-manager' ); ?></th>
+                    <th><?php esc_html_e( 'Expires', 'reactwoo-api-manager' ); ?></th>
                     <th><?php esc_html_e( 'Actions', 'reactwoo-api-manager' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php
-                $subscriptions = array();
-                foreach ( $subscriptions_query->posts as $post ) {
-                    $subscription = wcs_get_subscription( $post->ID );
-                    if ( $subscription ) {
-                        $subscriptions[] = $subscription;
-                    }
-                }
-
-                if ( empty( $subscriptions ) ) :
+                if ( empty( $licenses ) ) :
                 ?>
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 40px;">
                             <p style="margin: 0; color: #646970;">
-                                <?php esc_html_e( 'No subscriptions with licenses found.', 'reactwoo-api-manager' ); ?>
+                                <?php esc_html_e( 'No licenses found on the server.', 'reactwoo-api-manager' ); ?>
                             </p>
                             <p style="margin: 10px 0 0 0; font-size: 13px; color: #8c8f94;">
-                                <?php esc_html_e( 'Licenses will appear here once subscriptions with license package types are created and orders are completed.', 'reactwoo-api-manager' ); ?>
+                                <?php esc_html_e( 'If you expect licenses, verify your API key configuration and use Refresh.', 'reactwoo-api-manager' ); ?>
                             </p>
                         </td>
                     </tr>
                 <?php else : ?>
-                    <?php foreach ( $subscriptions as $subscription ) : ?>
+                    <?php foreach ( $licenses as $license ) : ?>
                         <?php
-                        $license_key = $subscription->get_meta( '_reactwoo_license_key' );
-                        $license_id = $subscription->get_meta( '_reactwoo_license_id' );
-                        $license_domain = $subscription->get_meta( '_reactwoo_license_domain' );
-                        $order = $subscription->get_parent();
-                        
-                        if ( ! $license_key ) {
-                            continue;
-                        }
+                        $license_key = isset( $license['license_key'] ) ? $license['license_key'] : ( isset( $license['licenseKey'] ) ? $license['licenseKey'] : '' );
+                        $license_id = isset( $license['id'] ) ? $license['id'] : '';
+                        $license_domain = isset( $license['domain'] ) ? $license['domain'] : '';
+                        $package_name = isset( $license['package_name'] ) ? $license['package_name'] : '';
+                        $package_type = isset( $license['package_type'] ) ? $license['package_type'] : '';
+                        $status = isset( $license['status'] ) ? $license['status'] : '';
+                        $expires_at = isset( $license['expires_at'] ) ? $license['expires_at'] : '';
+
+                        $linked_subscription = $license_key && isset( $subscription_by_license_key[ $license_key ] ) ? $subscription_by_license_key[ $license_key ] : null;
                         ?>
                         <tr>
                             <td>
-                                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $subscription->get_id() . '&action=edit' ) ); ?>">
-                                    #<?php echo esc_html( $subscription->get_id() ); ?>
-                                </a>
-                            </td>
-                            <td>
-                                <?php
-                                $customer_id = $subscription->get_customer_id();
-                                $customer = new WC_Customer( $customer_id );
-                                echo esc_html( $customer->get_display_name() );
-                                echo '<br><small>' . esc_html( $customer->get_email() ) . '</small>';
-                                ?>
+                                <?php if ( $license_id ) : ?>
+                                    <strong>#<?php echo esc_html( $license_id ); ?></strong>
+                                <?php else : ?>
+                                    —
+                                <?php endif; ?>
+                                <?php if ( $linked_subscription ) : ?>
+                                    <br><small>
+                                        <?php esc_html_e( 'Subscription:', 'reactwoo-api-manager' ); ?>
+                                        <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $linked_subscription->get_id() . '&action=edit' ) ); ?>">
+                                            #<?php echo esc_html( $linked_subscription->get_id() ); ?>
+                                        </a>
+                                    </small>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <code><?php echo esc_html( $license_key ); ?></code>
-                                <?php if ( $license_id ) : ?>
-                                    <br><small><?php printf( esc_html__( 'ID: %d', 'reactwoo-api-manager' ), $license_id ); ?></small>
-                                <?php endif; ?>
                             </td>
                             <td>
                                 <?php echo $license_domain ? esc_html( $license_domain ) : '—'; ?>
                             </td>
                             <td>
                                 <?php
-                                $status = $subscription->get_status();
-                                $status_labels = wcs_get_subscription_statuses();
-                                echo '<span class="subscription-status status-' . esc_attr( $status ) . '">';
-                                echo esc_html( isset( $status_labels[ 'wc-' . $status ] ) ? $status_labels[ 'wc-' . $status ] : $status );
-                                echo '</span>';
+                                $label = $package_name ? wp_strip_all_tags( $package_name ) : '';
+                                if ( $package_type ) {
+                                    $label .= $label ? ' (' . $package_type . ')' : $package_type;
+                                }
+                                echo $label ? esc_html( $label ) : '—';
                                 ?>
                             </td>
                             <td>
-                                <?php echo esc_html( $subscription->get_date_created()->date_i18n( get_option( 'date_format' ) ) ); ?>
+                                <?php echo $status ? esc_html( $status ) : '—'; ?>
                             </td>
                             <td>
-                                <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $subscription->get_id() . '&action=edit' ) ); ?>" class="button button-small">
-                                    <?php esc_html_e( 'View', 'reactwoo-api-manager' ); ?>
-                                </a>
+                                <?php echo $expires_at ? esc_html( $expires_at ) : '—'; ?>
+                            </td>
+                            <td>
+                                <?php if ( $linked_subscription ) : ?>
+                                    <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $linked_subscription->get_id() . '&action=edit' ) ); ?>" class="button button-small">
+                                        <?php esc_html_e( 'View Subscription', 'reactwoo-api-manager' ); ?>
+                                    </a>
+                                <?php else : ?>
+                                    —
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
