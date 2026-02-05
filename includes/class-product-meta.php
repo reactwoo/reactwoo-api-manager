@@ -148,13 +148,6 @@ class ReactWoo_Product_Meta {
     public function add_license_tab_content() {
         global $post;
 
-        $product = wc_get_product( $post->ID );
-        
-        // Only show for subscription products (including variable subscriptions)
-        if ( ! $product || ! ( $product->is_type( 'subscription' ) || $product->is_type( 'variable-subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
-            return;
-        }
-
         $api = new ReactWoo_License_Server_API();
         $packages = $api->get_packages();
         $selected_package_id = get_post_meta( $post->ID, '_reactwoo_license_package_id', true );
