@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/react-license"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/reactwoo-mainwp/reactwoo-maint-bridge"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/reactwoo-api"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/reactwoo-mainwp/reactwoo-support-connector"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/reactwoo-mainwp/reactwoo-support-portal"
+		},
+		{
+			"path": "../reactwoo-whmcs-bridge"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/react-cloud"
+		}
+	],
+	"settings": {}
+}
