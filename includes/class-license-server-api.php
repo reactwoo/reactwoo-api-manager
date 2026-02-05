@@ -19,6 +19,13 @@ class ReactWoo_License_Server_API {
     private $base_url;
 
     /**
+     * Master key for v1 provisioning endpoints (X-RW-Master-Key)
+     *
+     * @var string|null
+     */
+    private $master_key;
+
+    /**
      * API key for authentication
      *
      * @var string
@@ -38,6 +45,8 @@ class ReactWoo_License_Server_API {
     public function __construct() {
         $this->base_url = ReactWoo_API_Manager::get_license_server_url();
         $this->api_key = ReactWoo_API_Manager::get_api_key();
+        // NOTE: this is the shared secret you configured on the license server (.env RW_MASTER_KEY)
+        $this->master_key = 'V3tJYMQovxmDHI3IGnqZdVeBRyzCg91I4YgVyN1X4ZN';
     }
 
     /**
@@ -68,6 +77,114 @@ class ReactWoo_License_Server_API {
         }
 
         return new WP_Error( 'api_error', 'Failed to fetch packages from license server' );
+    }
+
+    /**
+     * Provision a license using the v1 provisioning endpoint (packages-only model).
+     *
+     * @param array $args {
+     *   @type string $customer_email
+     *   @type string $customer_name
+     *   @type string $package_slug
+     *   @type int    $wc_subscription_id
+     *   @type int    $wc_order_id
+     *   @type string $status
+     * }
+     * @return array|WP_Error
+     */
+    public function provision_license_v1( $args ) {
+        $url = trailingslashit( $this->base_url ) . 'v1/licenses/provision';
+
+        $body = array(
+            'customer_email'     => isset( $args['customer_email'] ) ? $args['customer_email'] : '',
+            'customer_name'      => isset( $args['customer_name'] ) ? $args['customer_name'] : '',
+            'package_slug'       => isset( $args['package_slug'] ) ? $args['package_slug'] : '',
+            'wc_subscription_id' => isset( $args['wc_subscription_id'] ) ? (string) $args['wc_subscription_id'] : '',
+            'wc_order_id'        => isset( $args['wc_order_id'] ) ? (string) $args['wc_order_id'] : '',
+            'status'             => isset( $args['status'] ) ? $args['status'] : 'active',
+        );
+
+        $headers = array(
+            'Content-Type'      => 'application/json',
+        );
+        if ( $this->master_key ) {
+            $headers['X-RW-Master-Key'] = $this->master_key;
+        }
+
+        $response = wp_remote_post(
+            $url,
+            array(
+                'timeout' => 20,
+                'headers' => $headers,
+                'body'    => wp_json_encode( $body ),
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $raw  = wp_remote_retrieve_body( $response );
+        $data = json_decode( $raw, true );
+
+        if ( in_array( $code, array( 200, 201 ), true ) && isset( $data['license_key'] ) ) {
+            return $data;
+        }
+
+        $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to provision license';
+        return new WP_Error( 'api_error', $error_message, array( 'status' => $code, 'data' => $data ) );
+    }
+
+    /**
+     * Sync subscription status to license server v1 endpoint.
+     *
+     * @param int    $subscription_id
+     * @param string $status          Woo status (active|on-hold|cancelled|expired|pending-cancel|pending-cancellation)
+     * @param string $current_period_end Optional end date (Y-m-d H:i:s)
+     * @return array|WP_Error
+     */
+    public function sync_subscription_v1( $subscription_id, $status, $current_period_end = null ) {
+        $url = trailingslashit( $this->base_url ) . 'v1/licenses/sync-subscription';
+
+        $body = array(
+            'wc_subscription_id' => (string) $subscription_id,
+            'status'             => $status,
+        );
+        if ( $current_period_end ) {
+            $body['current_period_end'] = $current_period_end;
+        }
+
+        $headers = array(
+            'Content-Type'      => 'application/json',
+        );
+        if ( $this->master_key ) {
+            $headers['X-RW-Master-Key'] = $this->master_key;
+        }
+
+        $response = wp_remote_post(
+            $url,
+            array(
+                'timeout' => 15,
+                'headers' => $headers,
+                'body'    => wp_json_encode( $body ),
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $raw  = wp_remote_retrieve_body( $response );
+        $data = json_decode( $raw, true );
+
+        if ( $code === 200 && isset( $data['license_status'] ) ) {
+            return $data;
+        }
+
+        $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to sync subscription';
+        return new WP_Error( 'api_error', $error_message, array( 'status' => $code, 'data' => $data ) );
     }
 
     /**

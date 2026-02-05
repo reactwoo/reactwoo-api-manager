@@ -89,22 +89,9 @@ class ReactWoo_Subscription_Handler {
 
         $api = new ReactWoo_License_Server_API();
 
-        // Handle different status changes
-        switch ( $new_status ) {
-            case 'cancelled':
-            case 'on-hold':
-            case 'expired':
-                // Cancel/deactivate license
-                $api->update_license_status( $license_id, 'inactive' );
-                break;
-
-            case 'active':
-                // Reactivate license if it was previously cancelled
-                if ( in_array( $old_status, array( 'cancelled', 'on-hold', 'expired' ) ) ) {
-                    $api->update_license_status( $license_id, 'active' );
-                }
-                break;
-        }
+        // Sync subscription state to license server v1 endpoint (it will map to license statuses)
+        $current_period_end = $subscription->get_date( 'end' );
+        $api->sync_subscription_v1( $subscription->get_id(), $new_status, $current_period_end );
     }
 
     /**
@@ -234,12 +221,8 @@ class ReactWoo_Subscription_Handler {
             return;
         }
 
-        // Get domain from order
+        // Get domain from order (stored for reference; v1 provisioning is keyed by subscription, not domain)
         $domain = $this->get_domain_from_order( $order );
-        if ( ! $domain ) {
-            error_log( 'ReactWoo API Manager: No domain found for subscription #' . $subscription->get_id() );
-            return;
-        }
 
         // Calculate expiration date based on subscription billing period
         $expires_at = null;
@@ -293,39 +276,30 @@ class ReactWoo_Subscription_Handler {
         }
 
         $api = new ReactWoo_License_Server_API();
-        $package_type = $api->get_package_type_by_id( $package_id );
-        if ( is_wp_error( $package_type ) ) {
-            error_log( 'ReactWoo API Manager: Failed to look up package type for package #' . $package_id . ' (' . $package_type->get_error_message() . ')' );
-            $package_type = null;
+        $package = $api->get_package_by_id( $package_id );
+        if ( is_wp_error( $package ) ) {
+            error_log( 'ReactWoo API Manager: Failed to look up package #' . $package_id . ' (' . $package->get_error_message() . ')' );
+            return;
+        }
+        if ( ! $package || empty( $package['slug'] ) ) {
+            error_log( 'ReactWoo API Manager: Package slug missing for package #' . $package_id );
+            return;
         }
 
-        $license_payload = array_merge(
+        $customer_email = $order->get_billing_email();
+        $customer_name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+
+        // Provision via v1 endpoint (idempotent on subscription id)
+        $license = $api->provision_license_v1(
             array(
-                'status' => 'active',
-                'package_id' => $package_id,
-                'expires_at' => $expires_at,
-            ),
-            $pricing_data
+                'customer_email'     => $customer_email,
+                'customer_name'      => $customer_name,
+                'package_slug'       => $package['slug'],
+                'wc_subscription_id' => $subscription->get_id(),
+                'wc_order_id'        => $order->get_id(),
+                'status'             => 'active',
+            )
         );
-
-        $license = null;
-        if ( $package_type ) {
-            $existing_license = $api->find_license_by_domain_and_package_type( $domain, $package_type );
-            if ( is_wp_error( $existing_license ) ) {
-                error_log( 'ReactWoo API Manager: Failed to look up existing license for domain ' . $domain . ' and package type ' . $package_type . ' - ' . $existing_license->get_error_message() );
-            } elseif ( $existing_license && isset( $existing_license['id'] ) ) {
-                $license = $api->update_license( $existing_license['id'], $license_payload );
-                if ( is_wp_error( $license ) ) {
-                    error_log( 'ReactWoo API Manager: Failed to update existing license #' . $existing_license['id'] . ' for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );
-                    $license = null;
-                }
-            }
-        }
-
-        if ( ! $license ) {
-            // Create license via API with pricing information
-            $license = $api->create_license( $domain, $package_id, 'active', $expires_at, $pricing_data );
-        }
 
         if ( is_wp_error( $license ) ) {
             error_log( 'ReactWoo API Manager: Failed to create license for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );
@@ -336,8 +310,8 @@ class ReactWoo_Subscription_Handler {
         if ( isset( $license['license_key'] ) ) {
             $subscription->update_meta_data( '_reactwoo_license_key', $license['license_key'] );
         }
-        if ( isset( $license['id'] ) ) {
-            $subscription->update_meta_data( '_reactwoo_license_id', $license['id'] );
+        if ( isset( $license['license_id'] ) ) {
+            $subscription->update_meta_data( '_reactwoo_license_id', $license['license_id'] );
         }
         if ( isset( $license['domain'] ) ) {
             $subscription->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
@@ -350,7 +324,9 @@ class ReactWoo_Subscription_Handler {
 
         // Also store in order meta for easy reference
         $order->update_meta_data( '_reactwoo_license_key', $license['license_key'] );
-        $order->update_meta_data( '_reactwoo_license_id', $license['id'] );
+        if ( isset( $license['license_id'] ) ) {
+            $order->update_meta_data( '_reactwoo_license_id', $license['license_id'] );
+        }
         $order->save();
 
         // Log the creation
