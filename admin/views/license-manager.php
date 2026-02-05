@@ -14,6 +14,42 @@ $licenses_cache_key = 'reactwoo_admin_licenses_cache_v1';
 $licenses_cache_ttl = 2 * MINUTE_IN_SECONDS;
 $licenses = null;
 $licenses_error = null;
+$status_update_notice = null;
+$status_update_error  = null;
+
+// Handle status change actions from this screen.
+if ( isset( $_POST['reactwoo_update_license_status'] ) && check_admin_referer( 'reactwoo_update_license_status', 'reactwoo_update_license_status_nonce' ) ) {
+    if ( current_user_can( 'manage_woocommerce' ) ) {
+        $license_id = isset( $_POST['reactwoo_license_id'] ) ? absint( $_POST['reactwoo_license_id'] ) : 0;
+        $new_status = isset( $_POST['reactwoo_new_status'] ) ? sanitize_text_field( wp_unslash( $_POST['reactwoo_new_status'] ) ) : '';
+
+        if ( $license_id && $new_status ) {
+            $api    = new ReactWoo_License_Server_API();
+            $result = $api->update_license_status( $license_id, $new_status );
+
+            if ( is_wp_error( $result ) ) {
+                $status_update_error = sprintf(
+                    /* translators: 1: status, 2: error message */
+                    __( 'Failed to update license status to %1$s: %2$s', 'reactwoo-api-manager' ),
+                    $new_status,
+                    $result->get_error_message()
+                );
+            } else {
+                $status_update_notice = sprintf(
+                    /* translators: 1: status */
+                    __( 'License status updated to %1$s.', 'reactwoo-api-manager' ),
+                    $new_status
+                );
+                // Clear cache so we re-fetch fresh statuses.
+                delete_transient( $licenses_cache_key );
+            }
+        } else {
+            $status_update_error = __( 'Missing license ID or status for update.', 'reactwoo-api-manager' );
+        }
+    } else {
+        $status_update_error = __( 'You do not have permission to change license statuses.', 'reactwoo-api-manager' );
+    }
+}
 
 if ( isset( $_POST['reactwoo_refresh_server_licenses'] ) && check_admin_referer( 'reactwoo_refresh_server_licenses', 'reactwoo_refresh_server_licenses_nonce' ) ) {
     delete_transient( $licenses_cache_key );
@@ -49,6 +85,18 @@ if ( function_exists( 'wcs_get_subscriptions' ) ) {
 <div class="wrap">
     <h1><?php esc_html_e( 'License Manager', 'reactwoo-api-manager' ); ?></h1>
     <p><?php esc_html_e( 'Licenses shown below are pulled from the license server (cached briefly).', 'reactwoo-api-manager' ); ?></p>
+
+    <?php if ( $status_update_notice ) : ?>
+        <div class="notice notice-success is-dismissible">
+            <p><?php echo esc_html( $status_update_notice ); ?></p>
+        </div>
+    <?php endif; ?>
+
+    <?php if ( $status_update_error ) : ?>
+        <div class="notice notice-error">
+            <p><?php echo esc_html( $status_update_error ); ?></p>
+        </div>
+    <?php endif; ?>
 
     <form method="post" style="margin: 12px 0 18px;">
         <?php wp_nonce_field( 'reactwoo_refresh_server_licenses', 'reactwoo_refresh_server_licenses_nonce' ); ?>
@@ -150,9 +198,61 @@ if ( function_exists( 'wcs_get_subscriptions' ) ) {
                             </td>
                             <td>
                                 <?php if ( $linked_subscription ) : ?>
-                                    <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $linked_subscription->get_id() . '&action=edit' ) ); ?>" class="button button-small">
+                                    <a href="<?php echo esc_url( admin_url( 'post.php?post=' . $linked_subscription->get_id() . '&action=edit' ) ); ?>" class="button button-small" style="margin-bottom:4px;">
                                         <?php esc_html_e( 'View Subscription', 'reactwoo-api-manager' ); ?>
                                     </a>
+                                    <br />
+                                <?php endif; ?>
+
+                                <?php if ( $license_id && $status ) : ?>
+                                    <div class="reactwoo-license-actions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;">
+                                        <?php
+                                        // Simple status transitions: active ↔ on-hold, any → cancelled.
+                                        $can_suspend   = ( 'active' === $status );
+                                        $can_reactivate = ( 'active' !== $status && 'cancelled' !== $status );
+                                        $can_cancel    = ( 'cancelled' !== $status );
+
+                                        if ( $can_suspend ) :
+                                        ?>
+                                            <form method="post" style="display:inline;">
+                                                <?php wp_nonce_field( 'reactwoo_update_license_status', 'reactwoo_update_license_status_nonce' ); ?>
+                                                <input type="hidden" name="reactwoo_update_license_status" value="1" />
+                                                <input type="hidden" name="reactwoo_license_id" value="<?php echo esc_attr( $license_id ); ?>" />
+                                                <input type="hidden" name="reactwoo_new_status" value="on-hold" />
+                                                <button type="submit" class="button button-small">
+                                                    <?php esc_html_e( 'Suspend', 'reactwoo-api-manager' ); ?>
+                                                </button>
+                                            </form>
+                                        <?php
+                                        endif;
+
+                                        if ( $can_reactivate ) :
+                                        ?>
+                                            <form method="post" style="display:inline;">
+                                                <?php wp_nonce_field( 'reactwoo_update_license_status', 'reactwoo_update_license_status_nonce' ); ?>
+                                                <input type="hidden" name="reactwoo_update_license_status" value="1" />
+                                                <input type="hidden" name="reactwoo_license_id" value="<?php echo esc_attr( $license_id ); ?>" />
+                                                <input type="hidden" name="reactwoo_new_status" value="active" />
+                                                <button type="submit" class="button button-small">
+                                                    <?php esc_html_e( 'Reactivate', 'reactwoo-api-manager' ); ?>
+                                                </button>
+                                            </form>
+                                        <?php
+                                        endif;
+
+                                        if ( $can_cancel ) :
+                                        ?>
+                                            <form method="post" style="display:inline;">
+                                                <?php wp_nonce_field( 'reactwoo_update_license_status', 'reactwoo_update_license_status_nonce' ); ?>
+                                                <input type="hidden" name="reactwoo_update_license_status" value="1" />
+                                                <input type="hidden" name="reactwoo_license_id" value="<?php echo esc_attr( $license_id ); ?>" />
+                                                <input type="hidden" name="reactwoo_new_status" value="cancelled" />
+                                                <button type="submit" class="button button-small button-link-delete">
+                                                    <?php esc_html_e( 'Cancel', 'reactwoo-api-manager' ); ?>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
                                 <?php else : ?>
                                     —
                                 <?php endif; ?>

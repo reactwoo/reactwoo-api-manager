@@ -192,7 +192,10 @@ $billing_period_options = array(
                 <textarea name="wizard_order_note" class="large-text" rows="3"><?php echo reactwoo_old_value( 'wizard_order_note' ); ?></textarea>
             </div>
 
-            <?php submit_button( __( 'Create Order & Subscription', 'reactwoo-api-manager' ), 'primary', 'reactwoo_license_wizard_submit' ); ?>
+            <p>
+                <?php submit_button( __( 'Create Order & Subscription', 'reactwoo-api-manager' ), 'primary', 'reactwoo_license_wizard_submit', false ); ?>
+                <?php submit_button( __( 'Create License Only (no order)', 'reactwoo-api-manager' ), 'secondary', 'reactwoo_license_wizard_license_only', false ); ?>
+            </p>
         </form>
     <?php endif; ?>
 </div>

@@ -203,7 +203,7 @@ class ReactWoo_API_Manager_Admin {
      * @return array|WP_Error|null
      */
     public function handle_license_wizard_submission() {
-        if ( empty( $_POST['reactwoo_license_wizard_submit'] ) ) {
+        if ( empty( $_POST['reactwoo_license_wizard_submit'] ) && empty( $_POST['reactwoo_license_wizard_license_only'] ) ) {
             return null;
         }
 
@@ -214,6 +214,8 @@ class ReactWoo_API_Manager_Admin {
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
             return new WP_Error( 'permission_denied', __( 'You do not have permission to create licenses.', 'reactwoo-api-manager' ) );
         }
+
+        $license_only = ! empty( $_POST['reactwoo_license_wizard_license_only'] );
 
         $product_id = isset( $_POST['wizard_product'] ) ? intval( $_POST['wizard_product'] ) : 0;
         $product = wc_get_product( $product_id );

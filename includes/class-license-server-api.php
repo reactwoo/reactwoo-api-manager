@@ -99,6 +99,7 @@ class ReactWoo_License_Server_API {
             'customer_email'     => isset( $args['customer_email'] ) ? $args['customer_email'] : '',
             'customer_name'      => isset( $args['customer_name'] ) ? $args['customer_name'] : '',
             'package_slug'       => isset( $args['package_slug'] ) ? $args['package_slug'] : '',
+            'domain'             => isset( $args['domain'] ) ? $args['domain'] : '',
             'wc_subscription_id' => isset( $args['wc_subscription_id'] ) ? (string) $args['wc_subscription_id'] : '',
             'wc_order_id'        => isset( $args['wc_order_id'] ) ? (string) $args['wc_order_id'] : '',
             'status'             => isset( $args['status'] ) ? $args['status'] : 'active',
