@@ -169,28 +169,34 @@ class ReactWoo_Product_Meta {
                     echo esc_html( $packages->get_error_message() );
                     echo '</p>';
                 } else {
-                    woocommerce_wp_select( array(
-                        'id' => '_reactwoo_license_package_id',
-                        'label' => __( 'License Package Type', 'reactwoo-api-manager' ),
-                        'description' => __( 'Select the license package type from the license server that will be associated with this subscription product. When a subscription is created, a license key will be automatically generated for the selected package type.', 'reactwoo-api-manager' ),
-                        'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
-                        'value' => $selected_package_id,
-                    ) );
+                    if ( empty( $packages ) ) {
+                        echo '<p class="form-field">';
+                        echo esc_html__( 'No license packages are available from the license server. Please create at least one package on license.reactwoo.com and ensure the /api/packages endpoint is reachable.', 'reactwoo-api-manager' );
+                        echo '</p>';
+                    } else {
+                        woocommerce_wp_select( array(
+                            'id' => '_reactwoo_license_package_id',
+                            'label' => __( 'License Package Type', 'reactwoo-api-manager' ),
+                            'description' => __( 'Select the license package type from the license server that will be associated with this subscription product. When a subscription is created, a license key will be automatically generated for the selected package type.', 'reactwoo-api-manager' ),
+                            'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
+                            'value' => $selected_package_id,
+                        ) );
 
-                    if ( $selected_package_id ) {
-                        $selected_package = $this->find_package_by_id( $packages, $selected_package_id );
-                        if ( $selected_package ) {
-                            echo '<div class="form-field">';
-                            echo '<p><strong>' . esc_html__( 'Selected Package Details', 'reactwoo-api-manager' ) . ':</strong></p>';
-                            echo '<ul style="margin-left: 20px;">';
-                            if ( isset( $selected_package['description'] ) && $selected_package['description'] ) {
-                                echo '<li><strong>' . esc_html__( 'Description', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['description'] ) . '</li>';
+                        if ( $selected_package_id ) {
+                            $selected_package = $this->find_package_by_id( $packages, $selected_package_id );
+                            if ( $selected_package ) {
+                                echo '<div class="form-field">';
+                                echo '<p><strong>' . esc_html__( 'Selected Package Details', 'reactwoo-api-manager' ) . ':</strong></p>';
+                                echo '<ul style="margin-left: 20px;">';
+                                if ( isset( $selected_package['description'] ) && $selected_package['description'] ) {
+                                    echo '<li><strong>' . esc_html__( 'Description', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['description'] ) . '</li>';
+                                }
+                                if ( isset( $selected_package['slug'] ) && $selected_package['slug'] ) {
+                                    echo '<li><strong>' . esc_html__( 'Slug', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['slug'] ) . '</li>';
+                                }
+                                echo '</ul>';
+                                echo '</div>';
                             }
-                            if ( isset( $selected_package['slug'] ) && $selected_package['slug'] ) {
-                                echo '<li><strong>' . esc_html__( 'Slug', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['slug'] ) . '</li>';
-                            }
-                            echo '</ul>';
-                            echo '</div>';
                         }
                     }
                 }
