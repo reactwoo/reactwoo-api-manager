@@ -278,9 +278,32 @@ class ReactWoo_Subscription_Handler {
             )
         );
 
+        // Snapshot of subscription items before we try to resolve the package
+        $items = $subscription->get_items();
+        $items_snapshot = array();
+        foreach ( $items as $item ) {
+            $items_snapshot[] = array(
+                'item_id'       => $item->get_id(),
+                'product_id'    => $item->get_product_id(),
+                'variation_id'  => $item->get_variation_id(),
+                'name'          => $item->get_name(),
+                'type'          => $item->get_type(),
+            );
+        }
+        $this->log_debug(
+            'create_license_for_subscription: subscription items snapshot',
+            array(
+                'correlation_id'  => $correlation_id,
+                'subscription_id' => $subscription->get_id(),
+                'order_id'        => $order->get_id(),
+                'item_count'      => count( $items_snapshot ),
+                'items'           => $items_snapshot,
+            )
+        );
+
         // Get package ID from subscription items
         $package_id = null;
-        foreach ( $subscription->get_items() as $item ) {
+        foreach ( $items as $item ) {
             $product = $item->get_product();
             // Check for subscription product types (including variations)
             if ( $product && ( $product->is_type( 'subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
