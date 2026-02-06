@@ -297,9 +297,34 @@ class ReactWoo_Subscription_Handler {
                 } else {
                     $package_id = get_post_meta( $product_id, '_reactwoo_license_package_id', true );
                 }
+                $this->log_debug(
+                    'create_license_for_subscription: inspected subscription item product',
+                    array(
+                        'correlation_id' => $correlation_id,
+                        'subscription_id'=> $subscription->get_id(),
+                        'order_id'       => $order->get_id(),
+                        'item_id'        => $item->get_id(),
+                        'product_id'     => isset( $product_id ) ? $product_id : null,
+                        'product_type'   => $product->get_type(),
+                        'package_id'     => $package_id,
+                        'variation_parent_id' => isset( $parent_id ) ? $parent_id : null,
+                    )
+                );
                 if ( $package_id ) {
                     break;
                 }
+            } elseif ( $product ) {
+                $this->log_debug(
+                    'create_license_for_subscription: skipping non-subscription product item',
+                    array(
+                        'correlation_id' => $correlation_id,
+                        'subscription_id'=> $subscription->get_id(),
+                        'order_id'       => $order->get_id(),
+                        'item_id'        => $item->get_id(),
+                        'product_id'     => $product->get_id(),
+                        'product_type'   => $product->get_type(),
+                    )
+                );
             }
         }
 
