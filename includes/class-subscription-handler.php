@@ -59,14 +59,35 @@ class ReactWoo_Subscription_Handler {
         // Check if license already exists
         $license_key = $subscription->get_meta( '_reactwoo_license_key' );
         if ( $license_key ) {
+            $this->log_debug(
+                'handle_subscription_activated: license already exists, skipping',
+                array(
+                    'subscription_id' => $subscription->get_id(),
+                    'license_key'     => $license_key,
+                )
+            );
             return; // License already created
         }
 
         // Get parent order
         $order = $subscription->get_parent();
         if ( ! $order ) {
+            $this->log_debug(
+                'handle_subscription_activated: no parent order found, skipping',
+                array(
+                    'subscription_id' => $subscription->get_id(),
+                )
+            );
             return;
         }
+
+        $this->log_debug(
+            'handle_subscription_activated: creating license for activated subscription',
+            array(
+                'subscription_id' => $subscription->get_id(),
+                'order_id'        => $order->get_id(),
+            )
+        );
 
         // Create license for this subscription
         $this->create_license_for_subscription( $subscription, $order );
@@ -84,8 +105,25 @@ class ReactWoo_Subscription_Handler {
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
 
         if ( ! $license_key || ! $license_id ) {
+            $this->log_debug(
+                'handle_subscription_status_change: no license meta present, skipping',
+                array(
+                    'subscription_id' => $subscription->get_id(),
+                    'old_status'      => $old_status,
+                    'new_status'      => $new_status,
+                )
+            );
             return; // No license associated
         }
+
+        $this->log_debug(
+            'handle_subscription_status_change: syncing subscription status to license server',
+            array(
+                'subscription_id' => $subscription->get_id(),
+                'old_status'      => $old_status,
+                'new_status'      => $new_status,
+            )
+        );
 
         $api = new ReactWoo_License_Server_API();
 
@@ -102,18 +140,57 @@ class ReactWoo_Subscription_Handler {
     public function maybe_create_license_on_order_completion( $order_id ) {
         $order = wc_get_order( $order_id );
         if ( ! $order ) {
+            $this->log_debug(
+                'maybe_create_license_on_order_completion: order not found',
+                array(
+                    'order_id' => $order_id,
+                )
+            );
             return;
         }
 
         // Get subscriptions for this order
         $subscriptions = wcs_get_subscriptions_for_order( $order_id );
 
+        if ( empty( $subscriptions ) ) {
+            $this->log_debug(
+                'maybe_create_license_on_order_completion: no subscriptions found for order',
+                array(
+                    'order_id' => $order_id,
+                )
+            );
+        } else {
+            $this->log_debug(
+                'maybe_create_license_on_order_completion: processing subscriptions for order completion',
+                array(
+                    'order_id'          => $order_id,
+                    'subscription_ids'  => wp_list_pluck( $subscriptions, 'id' ),
+                )
+            );
+        }
+
         foreach ( $subscriptions as $subscription ) {
             // Check if license already exists
             $license_key = $subscription->get_meta( '_reactwoo_license_key' );
             if ( $license_key ) {
+                $this->log_debug(
+                    'maybe_create_license_on_order_completion: license already exists on subscription, skipping',
+                    array(
+                        'order_id'        => $order_id,
+                        'subscription_id' => $subscription->get_id(),
+                        'license_key'     => $license_key,
+                    )
+                );
                 continue; // License already created
             }
+
+            $this->log_debug(
+                'maybe_create_license_on_order_completion: creating license for subscription on completed order',
+                array(
+                    'order_id'        => $order_id,
+                    'subscription_id' => $subscription->get_id(),
+                )
+            );
 
             $this->create_license_for_subscription( $subscription, $order );
         }
@@ -190,6 +267,17 @@ class ReactWoo_Subscription_Handler {
      * @param WC_Order        $order Parent order
      */
     private function create_license_for_subscription( $subscription, $order ) {
+        $correlation_id = function_exists( 'wp_generate_uuid4' ) ? wp_generate_uuid4() : uniqid( 'rw_', true );
+
+        $this->log_debug(
+            'create_license_for_subscription: entered',
+            array(
+                'correlation_id'  => $correlation_id,
+                'subscription_id' => $subscription->get_id(),
+                'order_id'        => $order->get_id(),
+            )
+        );
+
         // Get package ID from subscription items
         $package_id = null;
         foreach ( $subscription->get_items() as $item ) {
@@ -217,12 +305,29 @@ class ReactWoo_Subscription_Handler {
 
         if ( ! $package_id ) {
             // No package selected for this subscription product
-            error_log( 'ReactWoo API Manager: No license package ID found for subscription #' . $subscription->get_id() );
+            $this->log_debug(
+                'create_license_for_subscription: no license package ID found for subscription',
+                array(
+                    'correlation_id'  => $correlation_id,
+                    'subscription_id' => $subscription->get_id(),
+                )
+            );
             return;
         }
 
         // Get domain from order (stored for reference; v1 provisioning is keyed by subscription, not domain)
         $domain = $this->get_domain_from_order( $order );
+
+        $this->log_debug(
+            'create_license_for_subscription: resolved package and domain',
+            array(
+                'correlation_id'  => $correlation_id,
+                'subscription_id' => $subscription->get_id(),
+                'order_id'        => $order->get_id(),
+                'package_id'      => $package_id,
+                'domain'          => $domain,
+            )
+        );
 
         // Calculate expiration date based on subscription billing period
         $expires_at = null;
@@ -278,11 +383,25 @@ class ReactWoo_Subscription_Handler {
         $api = new ReactWoo_License_Server_API();
         $package = $api->get_package_by_id( $package_id );
         if ( is_wp_error( $package ) ) {
-            error_log( 'ReactWoo API Manager: Failed to look up package #' . $package_id . ' (' . $package->get_error_message() . ')' );
+            $this->log_debug(
+                'create_license_for_subscription: failed to look up package',
+                array(
+                    'correlation_id' => $correlation_id,
+                    'package_id'     => $package_id,
+                    'error'          => $package->get_error_message(),
+                )
+            );
             return;
         }
         if ( ! $package || empty( $package['slug'] ) ) {
-            error_log( 'ReactWoo API Manager: Package slug missing for package #' . $package_id );
+            $this->log_debug(
+                'create_license_for_subscription: package slug missing',
+                array(
+                    'correlation_id' => $correlation_id,
+                    'package_id'     => $package_id,
+                    'package'        => $package,
+                )
+            );
             return;
         }
 
@@ -298,11 +417,22 @@ class ReactWoo_Subscription_Handler {
                 'wc_subscription_id' => $subscription->get_id(),
                 'wc_order_id'        => $order->get_id(),
                 'status'             => 'active',
+                'domain'             => $domain,
+                'correlation_id'     => $correlation_id,
             )
         );
 
         if ( is_wp_error( $license ) ) {
-            error_log( 'ReactWoo API Manager: Failed to create license for subscription #' . $subscription->get_id() . ': ' . $license->get_error_message() );
+            $this->log_debug(
+                'create_license_for_subscription: failed to create license via API',
+                array(
+                    'correlation_id'  => $correlation_id,
+                    'subscription_id' => $subscription->get_id(),
+                    'order_id'        => $order->get_id(),
+                    'error'           => $license->get_error_message(),
+                    'error_data'      => $license->get_error_data(),
+                )
+            );
             return;
         }
 
@@ -330,7 +460,16 @@ class ReactWoo_Subscription_Handler {
         $order->save();
 
         // Log the creation
-        error_log( 'ReactWoo API Manager: License created for subscription #' . $subscription->get_id() . ' - License Key: ' . $license['license_key'] );
+        $this->log_debug(
+            'create_license_for_subscription: license created successfully',
+            array(
+                'correlation_id'  => $correlation_id,
+                'subscription_id' => $subscription->get_id(),
+                'order_id'        => $order->get_id(),
+                'license_key'     => isset( $license['license_key'] ) ? $license['license_key'] : null,
+                'license_id'      => isset( $license['license_id'] ) ? $license['license_id'] : null,
+            )
+        );
     }
 
     /**
@@ -576,6 +715,26 @@ class ReactWoo_Subscription_Handler {
                 $order->update_meta_data( '_reactwoo_domain', $domain );
                 $order->save();
             }
+        }
+    }
+
+    /**
+     * Internal helper for structured debug logging.
+     *
+     * Logs only when WP_DEBUG is enabled to avoid noisy production logs.
+     *
+     * @param string $message
+     * @param array  $context
+     */
+    private function log_debug( $message, $context = array() ) {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            $line = 'ReactWoo API Manager: ' . $message;
+            if ( ! empty( $context ) ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                $line .= ' | ' . wp_json_encode( $context );
+            }
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( $line );
         }
     }
 }

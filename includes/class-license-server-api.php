@@ -89,6 +89,8 @@ class ReactWoo_License_Server_API {
      *   @type int    $wc_subscription_id
      *   @type int    $wc_order_id
      *   @type string $status
+     *   @type string $domain
+     *   @type string $correlation_id
      * }
      * @return array|WP_Error
      */
@@ -105,12 +107,25 @@ class ReactWoo_License_Server_API {
             'status'             => isset( $args['status'] ) ? $args['status'] : 'active',
         );
 
+        if ( isset( $args['correlation_id'] ) && $args['correlation_id'] ) {
+            $body['correlation_id'] = $args['correlation_id'];
+        }
+
         $headers = array(
             'Content-Type'      => 'application/json',
         );
         if ( $this->master_key ) {
             $headers['X-RW-Master-Key'] = $this->master_key;
         }
+
+        $this->log_debug(
+            'provision_license_v1: sending request to license server',
+            array(
+                'url'            => $url,
+                'body'           => $body,
+                'correlation_id' => isset( $body['correlation_id'] ) ? $body['correlation_id'] : null,
+            )
+        );
 
         $response = wp_remote_post(
             $url,
@@ -122,12 +137,29 @@ class ReactWoo_License_Server_API {
         );
 
         if ( is_wp_error( $response ) ) {
+            $this->log_debug(
+                'provision_license_v1: HTTP error sending request',
+                array(
+                    'correlation_id' => isset( $body['correlation_id'] ) ? $body['correlation_id'] : null,
+                    'error'          => $response->get_error_message(),
+                    'error_data'     => $response->get_error_data(),
+                )
+            );
             return $response;
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         $raw  = wp_remote_retrieve_body( $response );
         $data = json_decode( $raw, true );
+
+        $this->log_debug(
+            'provision_license_v1: received response from license server',
+            array(
+                'correlation_id' => isset( $body['correlation_id'] ) ? $body['correlation_id'] : null,
+                'status_code'    => $code,
+                'response_body'  => $data,
+            )
+        );
 
         if ( in_array( $code, array( 200, 201 ), true ) && isset( $data['license_key'] ) ) {
             return $data;
@@ -538,6 +570,24 @@ class ReactWoo_License_Server_API {
 
         $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to fetch licenses';
         return new WP_Error( 'api_error', $error_message, array( 'status' => $response_code ) );
+    }
+
+    /**
+     * Internal helper for structured debug logging.
+     *
+     * @param string $message
+     * @param array  $context
+     */
+    private function log_debug( $message, $context = array() ) {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            $line = 'ReactWoo API Manager API: ' . $message;
+            if ( ! empty( $context ) ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                $line .= ' | ' . wp_json_encode( $context );
+            }
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( $line );
+        }
     }
 }
 
