@@ -91,6 +91,12 @@ class ReactWoo_License_Server_API {
      *   @type string $status
      *   @type string $domain
      *   @type string $correlation_id
+     *   @type float  $price
+     *   @type string $currency
+     *   @type string $start_date
+     *   @type string $billing_period
+     *   @type int    $billing_interval
+     *   @type string $renewal_frequency
      * }
      * @return array|WP_Error
      */
@@ -106,6 +112,26 @@ class ReactWoo_License_Server_API {
             'wc_order_id'        => isset( $args['wc_order_id'] ) ? (string) $args['wc_order_id'] : '',
             'status'             => isset( $args['status'] ) ? $args['status'] : 'active',
         );
+
+        // Optional pricing / billing metadata
+        if ( isset( $args['price'] ) ) {
+            $body['price'] = (float) $args['price'];
+        }
+        if ( isset( $args['currency'] ) && $args['currency'] ) {
+            $body['currency'] = $args['currency'];
+        }
+        if ( isset( $args['start_date'] ) && $args['start_date'] ) {
+            $body['start_date'] = $args['start_date'];
+        }
+        if ( isset( $args['billing_period'] ) && $args['billing_period'] ) {
+            $body['billing_period'] = $args['billing_period'];
+        }
+        if ( isset( $args['billing_interval'] ) ) {
+            $body['billing_interval'] = (int) $args['billing_interval'];
+        }
+        if ( isset( $args['renewal_frequency'] ) && $args['renewal_frequency'] ) {
+            $body['renewal_frequency'] = $args['renewal_frequency'];
+        }
 
         if ( isset( $args['correlation_id'] ) && $args['correlation_id'] ) {
             $body['correlation_id'] = $args['correlation_id'];

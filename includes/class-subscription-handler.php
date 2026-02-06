@@ -498,6 +498,7 @@ class ReactWoo_Subscription_Handler {
         $customer_name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 
         // Provision via v1 endpoint (idempotent on subscription id)
+        // Include pricing/billing metadata so license server can populate price, billing_period, etc.
         $license = $api->provision_license_v1(
             array(
                 'customer_email'     => $customer_email,
@@ -508,6 +509,12 @@ class ReactWoo_Subscription_Handler {
                 'status'             => 'active',
                 'domain'             => $domain,
                 'correlation_id'     => $correlation_id,
+                'price'              => $subscription_price,
+                'currency'           => $currency,
+                'start_date'         => $start_date,
+                'billing_period'     => $billing_period,
+                'billing_interval'   => $billing_interval,
+                'renewal_frequency'  => $renewal_frequency,
             )
         );
 
