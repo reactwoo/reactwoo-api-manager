@@ -323,13 +323,13 @@ class ReactWoo_Subscription_Handler {
                 $this->log_debug(
                     'create_license_for_subscription: inspected subscription item product',
                     array(
-                        'correlation_id' => $correlation_id,
-                        'subscription_id'=> $subscription->get_id(),
-                        'order_id'       => $order->get_id(),
-                        'item_id'        => $item->get_id(),
-                        'product_id'     => isset( $product_id ) ? $product_id : null,
-                        'product_type'   => $product->get_type(),
-                        'package_id'     => $package_id,
+                        'correlation_id'      => $correlation_id,
+                        'subscription_id'     => $subscription->get_id(),
+                        'order_id'            => $order->get_id(),
+                        'item_id'             => $item->get_id(),
+                        'product_id'          => isset( $product_id ) ? $product_id : null,
+                        'product_type'        => $product->get_type(),
+                        'package_id'          => $package_id,
                         'variation_parent_id' => isset( $parent_id ) ? $parent_id : null,
                     )
                 );
@@ -340,14 +340,55 @@ class ReactWoo_Subscription_Handler {
                 $this->log_debug(
                     'create_license_for_subscription: skipping non-subscription product item',
                     array(
-                        'correlation_id' => $correlation_id,
-                        'subscription_id'=> $subscription->get_id(),
-                        'order_id'       => $order->get_id(),
-                        'item_id'        => $item->get_id(),
-                        'product_id'     => $product->get_id(),
-                        'product_type'   => $product->get_type(),
+                        'correlation_id'  => $correlation_id,
+                        'subscription_id' => $subscription->get_id(),
+                        'order_id'        => $order->get_id(),
+                        'item_id'         => $item->get_id(),
+                        'product_id'      => $product->get_id(),
+                        'product_type'    => $product->get_type(),
                     )
                 );
+            }
+        }
+
+        // Fallback: if subscription has no items (can happen for wizard-created subs),
+        // try to resolve the package ID from the parent order's items instead.
+        if ( ! $package_id ) {
+            $this->log_debug(
+                'create_license_for_subscription: no package from subscription items, falling back to order items',
+                array(
+                    'correlation_id'  => $correlation_id,
+                    'subscription_id' => $subscription->get_id(),
+                    'order_id'        => $order->get_id(),
+                )
+            );
+
+            foreach ( $order->get_items() as $order_item ) {
+                $order_product = $order_item->get_product();
+                if ( ! $order_product ) {
+                    continue;
+                }
+
+                $order_product_id = $order_product->get_id();
+                $order_package_id = get_post_meta( $order_product_id, '_reactwoo_license_package_id', true );
+
+                $this->log_debug(
+                    'create_license_for_subscription: inspected order item product for fallback package lookup',
+                    array(
+                        'correlation_id'  => $correlation_id,
+                        'subscription_id' => $subscription->get_id(),
+                        'order_id'        => $order->get_id(),
+                        'order_item_id'   => $order_item->get_id(),
+                        'product_id'      => $order_product_id,
+                        'product_type'    => $order_product->get_type(),
+                        'package_id'      => $order_package_id,
+                    )
+                );
+
+                if ( $order_package_id ) {
+                    $package_id = $order_package_id;
+                    break;
+                }
             }
         }
 
