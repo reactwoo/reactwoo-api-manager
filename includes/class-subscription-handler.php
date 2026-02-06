@@ -433,6 +433,10 @@ class ReactWoo_Subscription_Handler {
         // Get subscription pricing information
         $subscription_price = $subscription->get_total();
         $currency = $subscription->get_currency();
+        // Fallback: some wizard-created subscriptions may have 0 total; fall back to parent order total.
+        if ( ! $subscription_price && $order instanceof WC_Order ) {
+            $subscription_price = $order->get_total();
+        }
         $start_date = $subscription->get_date( 'start' ) ? $subscription->get_date( 'start' ) : current_time( 'mysql' );
 
         // Calculate human-readable renewal frequency
