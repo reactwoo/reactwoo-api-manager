@@ -25,13 +25,22 @@
 			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/react-cloud"
 		},
 		{
-			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/GeoElementor"
-		},
-		{
 			"path": "../reactwoo-geocore"
 		},
 		{
 			"path": "../Reactwoo-linkedin-core"
+		},
+		{
+			"path": "../geo-elementor"
+		},
+		{
+			"path": "../reactwoo-geo-optimise"
+		},
+		{
+			"path": "../reactwoo-geo-ai"
+		},
+		{
+			"path": "../reactwoo-geo-commerce"
 		}
 	],
 	"settings": {}
