@@ -1,0 +1,22 @@
+---
+description: After finishing implementation, run git tag, build release zip, and git push
+alwaysApply: true
+---
+
+# Release workflow after implementation
+
+When a task is **implemented** (code changes complete and validated), **always** finish with this release sequence for the affected plugin/repo—**do not** stop at “done” without doing it unless the user explicitly opts out.
+
+## Steps
+
+1. **Commit** any uncommitted changes with a clear message (own shell command; do not chain with tag/push on Windows).
+2. **Version** — ensure the plugin version (e.g. header + `*_VERSION` constant) matches the release you are tagging.
+3. **Tag** — create an annotated tag in a **separate** command (e.g. `v0.4.28`). On Windows, `git tag -a` in a long `&&` chain can segfault and block the rest of the release.
+4. **Build local zip** — **always** run the repo packager after version bump, before or immediately after push (CI publish is separate). Use `npm run package:zip` → `scripts/package_zip.py` when `package.json` defines it; otherwise `git archive` with the correct `--prefix`. Local output is version-suffixed (e.g. `reactwoo-geo-ai-0.4.73.zip`, `reactwoo-geocore-1.8.39.zip`) for immediate install on Local/staging.
+5. **Push once** — `git push origin <branch> "<tag>"` (e.g. `git push origin main "v1.8.20"`). **Do not** run `git push origin main` and `git push origin <tag>` as two steps unless the combined push failed.
+
+## Notes
+
+- Do not commit generated `.zip` files unless the project already tracks them by convention.
+- If multiple plugins changed, repeat tag/zip/push **per git repository** that was modified.
+- **Geo Core:** pushing `main` alone triggers no publish workflow; only the **tag** `v*` publishes. Two separate pushes also meant duplicate/slow GitHub Actions (tests on main + publish on tag). Prefer one combined push; see `reactwoo-geocore/docs/releases-and-git-tags.md`.
