@@ -5,7 +5,9 @@ alwaysApply: true
 
 # Release workflow after implementation
 
-When a task is **implemented** (code changes complete and validated), **always** finish with this release sequence for the affected plugin/repo—**do not** stop at “done” without doing it unless the user explicitly opts out.
+When a task is **implemented** (code changes complete and validated), **always** finish with this release sequence for the affected **GitHub product** plugin/repo—**do not** stop at “done” without doing it unless the user explicitly opts out.
+
+**Out of scope:** `reactwoo-api-manager` — `origin` is production SSH (`ssh://reactwoo@reactwoo.com/...`), not GitHub. Commit only unless the user explicitly asks to deploy. See `reactwoo-api-manager/.cursor/rules/git-push.mdc`.
 
 ## Steps
 

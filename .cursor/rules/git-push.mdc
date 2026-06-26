@@ -1,0 +1,22 @@
+---
+description: api-manager origin is production SSH — do not push from agents
+alwaysApply: true
+---
+
+# Git push — reactwoo-api-manager
+
+This repo is **not** a GitHub R2 product release. Its `origin` points at the **production server**:
+
+```text
+ssh://reactwoo@reactwoo.com/home/reactwoo/public_html/wp-content/plugins/reactwoo-api-manager
+```
+
+## Agents
+
+- **Commit** workspace/plugin changes when the user asks.
+- **Do not** `git push origin` unless the user explicitly requests a **production deploy**.
+- Pushing `origin` opens **SSH to reactwoo.com** and may prompt for a key/passphrase — that is expected for server deploy, not for Geo satellite releases.
+
+## Product releases (Geo suite, Flow, LinkedIn, etc.)
+
+Use each product’s **GitHub** repo: `git push origin main "vVERSION"`. See `reactwoo-geocore/docs/releases-and-git-tags.md`.
