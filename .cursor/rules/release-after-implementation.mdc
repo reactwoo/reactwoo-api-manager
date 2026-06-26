@@ -13,10 +13,13 @@ When a task is **implemented** (code changes complete and validated), **always**
 2. **Version** — ensure the plugin version (e.g. header + `*_VERSION` constant) matches the release you are tagging.
 3. **Tag** — create an annotated tag in a **separate** command (e.g. `v0.4.28`). On Windows, `git tag -a` in a long `&&` chain can segfault and block the rest of the release.
 4. **Build local zip** — **always** run the repo packager after version bump, before or immediately after push (CI publish is separate). Use `npm run package:zip` → `scripts/package_zip.py` when `package.json` defines it; otherwise `git archive` with the correct `--prefix`. Local output is version-suffixed (e.g. `reactwoo-geo-ai-0.4.73.zip`, `reactwoo-geocore-1.8.39.zip`) for immediate install on Local/staging.
-5. **Push once** — `git push origin <branch> "<tag>"` (e.g. `git push origin main "v1.8.20"`). **Do not** run `git push origin main` and `git push origin <tag>` as two steps unless the combined push failed.
+5. **Push once** — `git push origin <branch> "<tag>"` (e.g. `git push origin main "v1.8.20"`). **Do not** run `git push origin main` and `git push origin <tag>` as two steps unless the combined push failed. Use **plain git push** — no `GIT_SSH_COMMAND` wrappers unless push failed and you are diagnosing.
+6. **Verify on GitHub** — `git ls-remote --tags origin "<tag>"` must show the tag before the release is complete. Commit + local tag alone **do not** publish to R2; only a **pushed** tag runs `publish-update.yml`.
 
 ## Notes
 
 - Do not commit generated `.zip` files unless the project already tracks them by convention.
 - If multiple plugins changed, repeat tag/zip/push **per git repository** that was modified.
-- **Geo Core:** pushing `main` alone triggers no publish workflow; only the **tag** `v*` publishes. Two separate pushes also meant duplicate/slow GitHub Actions (tests on main + publish on tag). Prefer one combined push; see `reactwoo-geocore/docs/releases-and-git-tags.md`.
+- **Geo Core / satellites:** pushing `main` alone triggers no R2 publish; only a **pushed** tag `v*` runs CI. Prefer one combined push; see `reactwoo-geocore/docs/releases-and-git-tags.md`.
+- If push hangs on Windows, kill it and retry `git push origin main "vVERSION"` in a fresh shell; fallback `python scripts/git_push.py --ref vVERSION` when the repo has that script.
+- Each Geo satellite and ReactWoo product repo should have `.cursor/rules/release.mdc` and `.cursor/rules/git-push-windows.mdc` with the same commit → tag → push → verify pattern.
