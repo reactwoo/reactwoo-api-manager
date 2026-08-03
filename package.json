@@ -1,0 +1,14 @@
+{
+  "name": "reactwoo-api-manager-packaging",
+  "private": true,
+  "reactwooBuild": {
+    "pluginFolder": "reactwoo-api-manager",
+    "zipFile": "reactwoo-api-manager.zip",
+    "mainPhp": "woocommerce-api-subscription-bridge.php"
+  },
+  "scripts": {
+    "package:zip": "python scripts/package_zip.py",
+    "test": "php tests/run.php",
+    "check:js": "node --check assets/js/account.js"
+  }
+}

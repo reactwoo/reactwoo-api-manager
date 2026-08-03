@@ -31,17 +31,45 @@
 			"path": "../Reactwoo-linkedin-core"
 		},
 		{
-			"path": "../geo-elementor"
-		},
-		{
 			"path": "../reactwoo-geo-optimise"
 		},
 		{
-			"path": "../reactwoo-geo-ai"
+			"path": "../reactwoo-geo-commerce"
 		},
 		{
-			"path": "../reactwoo-geo-commerce"
+			"path": "../reactwoo-geocore-pro"
+		},
+		{
+			"path": "../reactwoo-flow/reactwoo-flow"
+		},
+		{
+			"path": "../unlimited-elements-for-elementor-premium"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/reactwoo-reviews"
+		},
+		{
+			"path": "../reactwoo-atomic"
+		},
+		{
+			"path": "../reactwoo-atomic-pro"
+		},
+		{
+			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/atomic-elements"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"git.ignoreLimitWarning": true,
+		"git.path": "C:\\Program Files\\Git\\cmd\\git.exe",
+		"terminal.integrated.defaultProfile.windows": "PowerShell",
+		"terminal.integrated.profiles.windows": {
+			"PowerShell": {
+				"source": "PowerShell",
+				"icon": "terminal-powershell"
+			},
+			"Git Bash": {
+				"source": "Git Bash"
+			}
+		}
+	}
 }

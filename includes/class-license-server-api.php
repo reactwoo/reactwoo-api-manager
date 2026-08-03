@@ -43,10 +43,30 @@ class ReactWoo_License_Server_API {
      * Constructor
      */
     public function __construct() {
-        $this->base_url = ReactWoo_API_Manager::get_license_server_url();
-        $this->api_key = ReactWoo_API_Manager::get_api_key();
-        // NOTE: this is the shared secret you configured on the license server (.env RW_MASTER_KEY)
-        $this->master_key = 'V3tJYMQovxmDHI3IGnqZdVeBRyzCg91I4YgVyN1X4ZN';
+        $this->base_url   = ReactWoo_API_Manager::get_license_server_url();
+        $this->api_key    = ReactWoo_API_Manager::get_api_key();
+        $this->master_key = self::resolve_master_key();
+    }
+
+    /**
+     * Whether a server-side master key is configured.
+     *
+     * @return bool
+     */
+    public static function has_master_key() {
+        return self::resolve_master_key() !== '';
+    }
+
+    /**
+     * Read master key from wp-config constant only. Never from options or requests.
+     *
+     * @return string
+     */
+    public static function resolve_master_key() {
+        if ( defined( 'REACTWOO_LICENSE_MASTER_KEY' ) && is_string( REACTWOO_LICENSE_MASTER_KEY ) ) {
+            return trim( REACTWOO_LICENSE_MASTER_KEY );
+        }
+        return '';
     }
 
     /**
@@ -101,6 +121,13 @@ class ReactWoo_License_Server_API {
      * @return array|WP_Error
      */
     public function provision_license_v1( $args ) {
+        if ( ! $this->master_key ) {
+            return new WP_Error(
+                'missing_master_key',
+                'REACTWOO_LICENSE_MASTER_KEY is not defined. Add it to wp-config.php.'
+            );
+        }
+
         $url = trailingslashit( $this->base_url ) . 'v1/licenses/provision';
 
         $body = array(
@@ -204,6 +231,13 @@ class ReactWoo_License_Server_API {
      * @return array|WP_Error
      */
     public function sync_subscription_v1( $subscription_id, $status, $current_period_end = null ) {
+        if ( ! $this->master_key ) {
+            return new WP_Error(
+                'missing_master_key',
+                'REACTWOO_LICENSE_MASTER_KEY is not defined. Add it to wp-config.php.'
+            );
+        }
+
         $url = trailingslashit( $this->base_url ) . 'v1/licenses/sync-subscription';
 
         $body = array(

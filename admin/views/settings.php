@@ -77,6 +77,16 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
                     </p>
                 </td>
             </tr>
+            <tr>
+                <th scope="row"><?php esc_html_e( 'Master key', 'reactwoo-api-manager' ); ?></th>
+                <td>
+                    <?php if ( ReactWoo_License_Server_API::has_master_key() ) : ?>
+                        <p><span class="dashicons dashicons-yes-alt" style="color:#198754;"></span> <?php esc_html_e( 'REACTWOO_LICENSE_MASTER_KEY is defined in wp-config.php.', 'reactwoo-api-manager' ); ?></p>
+                    <?php else : ?>
+                        <p><span class="dashicons dashicons-warning" style="color:#b32d2e;"></span> <?php esc_html_e( 'Missing. Add define( \'REACTWOO_LICENSE_MASTER_KEY\', \'…\' ); to wp-config.php. Never store this in the database or commit it to Git.', 'reactwoo-api-manager' ); ?></p>
+                    <?php endif; ?>
+                </td>
+            </tr>
         </table>
 
         <?php submit_button( __( 'Save Settings', 'reactwoo-api-manager' ) ); ?>

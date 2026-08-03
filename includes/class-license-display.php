@@ -6,476 +6,404 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-    exit;
+	exit;
 }
 
 class ReactWoo_License_Display {
 
-    public function __construct() {
-        add_filter( 'woocommerce_email_order_meta_fields', array( $this, 'add_license_order_meta' ), 10, 3 );
-        add_action( 'woocommerce_email_after_order_table', array( $this, 'maybe_add_license_to_email' ), 20, 4 );
-        add_action( 'woocommerce_order_details_after_order_table', array( $this, 'print_license_on_order_page' ), 15, 1 );
-        add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
-        add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
-        add_action( 'init', array( $this, 'register_license_endpoint' ) );
-        add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
-        add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
-        add_filter( 'woocommerce_account_menu_items', array( $this, 'add_license_menu_item' ) );
-        add_action( 'woocommerce_account_license_endpoint', array( $this, 'render_license_endpoint' ) );
-        add_shortcode( 'reactwoo_license_keys', array( $this, 'render_license_shortcode' ) );
-        add_shortcode( 'license_keys', array( $this, 'render_license_shortcode' ) );
-    }
+	public function __construct() {
+		add_filter( 'woocommerce_email_order_meta_fields', array( $this, 'add_license_order_meta' ), 10, 3 );
+		add_action( 'woocommerce_email_after_order_table', array( $this, 'maybe_add_license_to_email' ), 20, 4 );
+		add_action( 'woocommerce_order_details_after_order_table', array( $this, 'print_license_on_order_page' ), 15, 1 );
+		add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
+		add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
+		add_action( 'init', array( $this, 'register_license_endpoint' ) );
+		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
+		add_action( 'template_redirect', array( $this, 'maybe_redirect_account_root' ), 5 );
+		add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
+		add_filter( 'woocommerce_account_menu_items', array( $this, 'add_license_menu_item' ), 20 );
+		add_action( 'woocommerce_account_license_endpoint', array( $this, 'render_license_endpoint' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_account_assets' ) );
+		add_shortcode( 'reactwoo_license_keys', array( $this, 'render_license_shortcode' ) );
+		add_shortcode( 'license_keys', array( $this, 'render_license_shortcode' ) );
+	}
 
-    /**
-     * Append license info to the completed order email.
-     */
-    public function maybe_add_license_to_email( $order, $sent_to_admin, $plain_text, $email ) {
-        if ( ! $order instanceof WC_Order || 'customer_completed_order' !== $email->id ) {
-            return;
-        }
+	/**
+	 * Register rewrite endpoint for license display.
+	 */
+	public function register_license_endpoint() {
+		add_rewrite_endpoint( 'license', EP_PAGES );
+	}
 
-        $license = $this->get_order_license_data( $order );
-        if ( ! $license ) {
-            return;
-        }
+	/**
+	 * @param array $vars Query vars.
+	 * @return array
+	 */
+	public function register_query_vars( $vars ) {
+		$vars[] = 'reactwoo_license_download';
+		return $vars;
+	}
 
-        $this->print_license_block( $license );
-    }
+	/**
+	 * Redirect logged-in My Account root to Products & licences.
+	 */
+	public function maybe_redirect_account_root() {
+		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() || ! is_user_logged_in() ) {
+			return;
+		}
 
-    /**
-     * Render license details under the customer order details table.
-     */
-    public function print_license_on_order_page( $order ) {
-        if ( ! $order instanceof WC_Order ) {
-            return;
-        }
+		global $wp;
+		$endpoint = isset( $wp->query_vars ) ? $wp->query_vars : array();
 
-        $license = $this->get_order_license_data( $order );
-        if ( ! $license ) {
-            return;
-        }
+		// Root account page has no endpoint query vars (or only pagename).
+		$known = array(
+			'orders',
+			'view-order',
+			'downloads',
+			'edit-address',
+			'payment-methods',
+			'edit-account',
+			'customer-logout',
+			'license',
+			'subscriptions',
+			'view-subscription',
+		);
 
-        $this->print_license_block( $license );
-    }
+		foreach ( $known as $key ) {
+			if ( array_key_exists( $key, $endpoint ) ) {
+				return;
+			}
+		}
 
-    /**
-     * Render license details in subscription view screens.
-     *
-     * @param WC_Subscription $subscription
-     */
-    public function print_license_on_subscription_page( $subscription ) {
-        if ( ! $subscription instanceof WC_Subscription ) {
-            return;
-        }
+		$target = wc_get_account_endpoint_url( 'license' );
+		if ( $target ) {
+			wp_safe_redirect( $target );
+			exit;
+		}
+	}
 
-        $license = $this->get_subscription_license_data( $subscription );
-        if ( ! $license ) {
-            return;
-        }
+	/**
+	 * Enqueue account UI assets on the licence endpoint / shortcode contexts.
+	 */
+	public function enqueue_account_assets() {
+		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+			return;
+		}
 
-        $this->print_license_block( $license );
-    }
+		$css = REACTWOO_API_MANAGER_PLUGIN_URL . 'assets/css/account.css';
+		$js  = REACTWOO_API_MANAGER_PLUGIN_URL . 'assets/js/account.js';
 
-    /**
-     * Get license info from an order.
-     *
-     * @param WC_Order $order
-     * @return array|null
-     */
-    private function get_order_license_data( $order ) {
-        if ( ! $order instanceof WC_Order ) {
-            return null;
-        }
+		wp_enqueue_style(
+			'reactwoo-api-manager-account',
+			$css,
+			array(),
+			REACTWOO_API_MANAGER_VERSION
+		);
 
-        $license_key = $order->get_meta( '_reactwoo_license_key' );
-        $license_domain = $order->get_meta( '_reactwoo_license_domain' );
-        if ( $license_key ) {
-            return array(
-                'key'    => $license_key,
-                'domain' => $license_domain,
-            );
-        }
+		wp_enqueue_script(
+			'reactwoo-api-manager-account',
+			$js,
+			array(),
+			REACTWOO_API_MANAGER_VERSION,
+			true
+		);
 
-        // Fallback: derive domain+package from the order and fetch from server (cached).
-        $domain = $order->get_meta( '_reactwoo_domain', true );
-        if ( ! $domain ) {
-            return null;
-        }
+		wp_localize_script(
+			'reactwoo-api-manager-account',
+			'reactwooAccount',
+			array(
+				'restUrl'   => esc_url_raw( rest_url( 'reactwoo/v1/account/licenses/' ) ),
+				'nonce'     => wp_create_nonce( 'wp_rest' ),
+				'i18n'      => array(
+					'copy'        => __( 'Copy key', 'reactwoo-api-manager' ),
+					'copied'      => __( 'Copied', 'reactwoo-api-manager' ),
+					'copyFailed'  => __( 'Could not copy key. Please try again.', 'reactwoo-api-manager' ),
+					'unavailable' => __( 'Key temporarily unavailable.', 'reactwoo-api-manager' ),
+					'pending'     => __( 'Provisioning…', 'reactwoo-api-manager' ),
+					'changeDomain'=> __( 'Contact support to change your registered website.', 'reactwoo-api-manager' ),
+				),
+			)
+		);
+	}
 
-        $package_id = null;
-        foreach ( $order->get_items() as $item ) {
-            $product = $item->get_product();
-            if ( $product ) {
-                $maybe_package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
-                if ( $maybe_package_id ) {
-                    $package_id = $maybe_package_id;
-                    break;
-                }
-            }
-        }
+	/**
+	 * Label and prioritise Products & licences; remove Dashboard when licence endpoint is available.
+	 *
+	 * @param array $items Menu items.
+	 * @return array
+	 */
+	public function add_license_menu_item( $items ) {
+		unset( $items['dashboard'] );
 
-        if ( ! $package_id ) {
-            return null;
-        }
+		$rebuilt = array();
+		$rebuilt['license'] = __( 'Products & licences', 'reactwoo-api-manager' );
 
-        $license = $this->get_cached_license( $domain, $package_id );
-        if ( ! $license ) {
-            return null;
-        }
+		foreach ( $items as $key => $label ) {
+			if ( 'license' === $key ) {
+				continue;
+			}
+			$rebuilt[ $key ] = $label;
+		}
 
-        // Backfill order meta for future use (email templates/admin list)
-        $order->update_meta_data( '_reactwoo_license_key', $license['key'] );
-        $order->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
-        $order->save();
+		return $rebuilt;
+	}
 
-        return $license;
-    }
+	/**
+	 * Display Products & licences endpoint.
+	 */
+	public function render_license_endpoint() {
+		$records = reactwoo_api_manager_get_customer_account_records( get_current_user_id() );
 
-    /**
-     * Get license info from a subscription, fallback to parent order.
-     *
-     * @param WC_Subscription $subscription
-     * @return array|null
-     */
-    private function get_subscription_license_data( $subscription ) {
-        $domain = $subscription->get_meta( '_reactwoo_license_domain', true );
-        $package_id = $subscription->get_meta( '_reactwoo_license_package_id', true );
-        $license_key = $subscription->get_meta( '_reactwoo_license_key', true );
+		wc_get_template(
+			'myaccount/license.php',
+			array(
+				'reactwoo_records' => $records,
+			),
+			'',
+			REACTWOO_API_MANAGER_PLUGIN_DIR . 'templates/'
+		);
+	}
 
-        // Fallbacks for older data (or when meta wasn't saved correctly):
-        // - domain may exist only on parent order as _reactwoo_domain
-        // - package_id may exist only on product meta
-        if ( ! $domain ) {
-            $parent_order = $subscription->get_parent();
-            if ( $parent_order instanceof WC_Order ) {
-                $domain = $parent_order->get_meta( '_reactwoo_domain', true );
-            }
-        }
+	/**
+	 * Compact shortcode using the same service.
+	 *
+	 * @return string
+	 */
+	public function render_license_shortcode() {
+		if ( ! is_user_logged_in() ) {
+			return '<p>' . esc_html__( 'Please log in to view your licences.', 'reactwoo-api-manager' ) . '</p>';
+		}
 
-        if ( ! $package_id ) {
-            foreach ( $subscription->get_items() as $item ) {
-                $product = $item->get_product();
-                if ( $product ) {
-                    $maybe_package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
-                    // If this is a variation and package isn't set on the variation, check parent.
-                    if ( ! $maybe_package_id && method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
-                        $maybe_package_id = get_post_meta( $product->get_parent_id(), '_reactwoo_license_package_id', true );
-                    }
-                    if ( $maybe_package_id ) {
-                        $package_id = $maybe_package_id;
-                        break;
-                    }
-                }
-            }
-        }
+		$this->enqueue_account_assets();
 
-        // If we can identify domain+package, fetch from server (cached).
-        if ( $domain && $package_id ) {
-            $license = $this->get_cached_license( $domain, $package_id );
-            if ( $license ) {
-                return $license;
-            }
-        }
+		$records = reactwoo_api_manager_get_customer_account_records( get_current_user_id() );
 
-        // Final fallback to local meta
-        if ( $license_key ) {
-            return array(
-                'key'    => $license_key,
-                'domain' => $domain,
-            );
-        }
+		ob_start();
+		wc_get_template(
+			'myaccount/license-compact.php',
+			array(
+				'reactwoo_records' => $records,
+			),
+			'',
+			REACTWOO_API_MANAGER_PLUGIN_DIR . 'templates/'
+		);
+		return ob_get_clean();
+	}
 
-        $order = $subscription->get_parent();
-        if ( $order instanceof WC_Order ) {
-            $license_key = $order->get_meta( '_reactwoo_license_key', true );
-            if ( $license_key ) {
-                return array(
-                    'key'    => $license_key,
-                    'domain' => $order->get_meta( '_reactwoo_license_domain', true ),
-                );
-            }
-        }
+	/**
+	 * Append licence notice to completed order email (local meta only; no domain lookup).
+	 */
+	public function maybe_add_license_to_email( $order, $sent_to_admin, $plain_text, $email ) {
+		if ( ! $order instanceof WC_Order || 'customer_completed_order' !== $email->id ) {
+			return;
+		}
 
-        return null;
-    }
-    /**
-     * Get license data from the server and cache result briefly.
-     *
-     * @param string $domain
-     * @param int    $package_id
-     * @return array|null
-     */
-    private function get_cached_license( $domain, $package_id ) {
-        if ( ! $domain || ! $package_id ) {
-            return null;
-        }
+		$license = $this->get_local_order_license( $order );
+		if ( ! $license ) {
+			return;
+		}
 
-        $cache_key = 'reactwoo_license_' . md5( $domain . '_' . $package_id );
-        $cached = get_transient( $cache_key );
-        if ( $cached ) {
-            return $cached;
-        }
+		$account_url = wc_get_account_endpoint_url( 'license' );
+		echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
+		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Your licence', 'reactwoo-api-manager' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Your licence key is ready in My Account → Products & licences.', 'reactwoo-api-manager' ) . '</p>';
+		if ( ! empty( $license['domain'] ) ) {
+			echo '<p><strong>' . esc_html__( 'Registered website', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
+		}
+		if ( $account_url ) {
+			echo '<p><a href="' . esc_url( $account_url ) . '">' . esc_html__( 'Open Products & licences', 'reactwoo-api-manager' ) . '</a></p>';
+		}
+		echo '</div>';
+	}
 
-        $api = new ReactWoo_License_Server_API();
-        $package_type = $api->get_package_type_by_id( $package_id );
-        if ( is_wp_error( $package_type ) ) {
-            $package_type = null;
-        }
+	/**
+	 * Order view: masked key only.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	public function print_license_on_order_page( $order ) {
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
 
-        // Use domain endpoint (no API key required) as source-of-truth for customer UI.
-        $licenses = $api->get_licenses_by_domain( $domain );
-        if ( is_wp_error( $licenses ) || empty( $licenses ) ) {
-            return null;
-        }
+		$license = $this->get_local_order_license( $order );
+		if ( ! $license ) {
+			return;
+		}
 
-        $license = null;
-        foreach ( $licenses as $l ) {
-            // Prefer matching by package_type when available, otherwise fallback to package_id
-            $matches = false;
-            if ( $package_type && isset( $l['package_type'] ) ) {
-                $matches = ( $l['package_type'] === $package_type );
-            } elseif ( isset( $l['package_id'] ) ) {
-                $matches = ( intval( $l['package_id'] ) === intval( $package_id ) );
-            }
+		$this->print_masked_license_block( $license );
+	}
 
-            if ( $matches && ( ! isset( $l['status'] ) || $l['status'] === 'active' ) ) {
-                $license = $l;
-                break;
-            }
-        }
+	/**
+	 * Subscription view: masked key only.
+	 *
+	 * @param WC_Subscription $subscription Subscription.
+	 */
+	public function print_license_on_subscription_page( $subscription ) {
+		if ( ! $subscription instanceof WC_Subscription ) {
+			return;
+		}
 
-        if ( ! $license ) {
-            return null;
-        }
+		$key    = (string) $subscription->get_meta( '_reactwoo_license_key', true );
+		$domain = (string) $subscription->get_meta( '_reactwoo_license_domain', true );
+		if ( $domain === '' ) {
+			$parent = $subscription->get_parent();
+			if ( $parent instanceof WC_Order ) {
+				$domain = (string) $parent->get_meta( '_reactwoo_domain', true );
+			}
+		}
+		if ( $key === '' ) {
+			$parent = $subscription->get_parent();
+			if ( $parent instanceof WC_Order ) {
+				$key = (string) $parent->get_meta( '_reactwoo_license_key', true );
+			}
+		}
+		if ( $key === '' ) {
+			return;
+		}
 
-        $value = array(
-            'key'    => isset( $license['license_key'] ) ? $license['license_key'] : ( isset( $license['licenseKey'] ) ? $license['licenseKey'] : '' ),
-            'domain' => isset( $license['domain'] ) ? $license['domain'] : $domain,
-        );
+		$this->print_masked_license_block(
+			array(
+				'key'             => $key,
+				'domain'          => $domain,
+				'subscription_id' => $subscription->get_id(),
+			)
+		);
+	}
 
-        set_transient( $cache_key, $value, MINUTE_IN_SECONDS * 5 );
-        return $value;
-    }
+	/**
+	 * Email meta: point customers to account; never embed full keys in HTML emails by default.
+	 *
+	 * @param array    $fields Fields.
+	 * @param bool     $sent_to_admin Admin flag.
+	 * @param WC_Order $order Order.
+	 * @return array
+	 */
+	public function add_license_order_meta( $fields, $sent_to_admin, $order ) {
+		if ( ! $order instanceof WC_Order ) {
+			return $fields;
+		}
 
-    /**
-     * Render the license block.
-     *
-     * @param array $license
-     */
-    private function print_license_block( $license ) {
-        if ( empty( $license['key'] ) ) {
-            return;
-        }
+		$license = $this->get_local_order_license( $order );
+		if ( empty( $license ) ) {
+			$fields['reactwoo_license_key'] = array(
+				'label' => __( 'Licence', 'reactwoo-api-manager' ),
+				'value' => __( 'Pending — check My Account → Products & licences shortly.', 'reactwoo-api-manager' ),
+			);
+			return $fields;
+		}
 
-        $domain_line = '';
-        if ( ! empty( $license['domain'] ) ) {
-            $domain_line = '<p class="reactwoo-license-domain"><strong>' . esc_html__( 'Domain', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
-        }
+		$fields['reactwoo_license_key'] = array(
+			'label' => __( 'Licence', 'reactwoo-api-manager' ),
+			'value' => __( 'Available in My Account → Products & licences (secure copy).', 'reactwoo-api-manager' ),
+		);
 
-        echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
-        echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Your License Key', 'reactwoo-api-manager' ) . '</h2>';
-        echo '<p>' . esc_html__( 'Use this license key on your website once it is active:', 'reactwoo-api-manager' ) . '</p>';
-        echo '<p style="font-size:18px;font-family:monospace;background:#fff;padding:12px;border:1px dashed #dcdcdc;border-radius:4px;margin-bottom:8px;">' . esc_html( $license['key'] ) . '</p>';
-        echo $domain_line;
-        echo '</div>';
-    }
+		if ( ! empty( $license['domain'] ) ) {
+			$fields['reactwoo_license_domain'] = array(
+				'label' => __( 'Registered website', 'reactwoo-api-manager' ),
+				'value' => $license['domain'],
+			);
+		}
 
-    /**
-     * Add license meta field to completed-order emails.
-     *
-     * @param array    $fields
-     * @param bool     $sent_to_admin
-     * @param WC_Order $order
-     * @return array
-     */
-    public function add_license_order_meta( $fields, $sent_to_admin, $order ) {
-        if ( ! $order instanceof WC_Order ) {
-            return $fields;
-        }
+		return $fields;
+	}
 
-        $license = $this->get_order_license_data( $order );
-        if ( empty( $license ) ) {
-            // Always show the field (even if pending), per UX request.
-            $fields['reactwoo_license_key'] = array(
-                'label' => __( 'License Key', 'reactwoo-api-manager' ),
-                'value' => __( 'Pending — please check My Account → License shortly.', 'reactwoo-api-manager' ),
-            );
-            return $fields;
-        }
+	/**
+	 * Optional secure text download (nonce + ownership). Not linked from primary account UI.
+	 */
+	public function maybe_handle_license_download() {
+		if ( ! is_user_logged_in() ) {
+			return;
+		}
 
-        $fields['reactwoo_license_key'] = array(
-            'label' => __( 'License Key', 'reactwoo-api-manager' ),
-            'value' => $license['key'],
-        );
+		$download = get_query_var( 'reactwoo_license_download' );
+		if ( ! $download ) {
+			return;
+		}
 
-        if ( ! empty( $license['domain'] ) ) {
-            $fields['reactwoo_license_domain'] = array(
-                'label' => __( 'License Domain', 'reactwoo-api-manager' ),
-                'value' => $license['domain'],
-            );
-        }
+		$subscription_id = absint( $download );
+		$nonce           = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+		if ( ! $subscription_id || ! $nonce || ! wp_verify_nonce( $nonce, 'reactwoo_license_download_' . $subscription_id ) ) {
+			wp_die( esc_html__( 'Invalid download request.', 'reactwoo-api-manager' ), 403 );
+		}
 
-        return $fields;
-    }
+		$subscription = function_exists( 'wcs_get_subscription' ) ? wcs_get_subscription( $subscription_id ) : null;
+		if ( ! $subscription instanceof WC_Subscription ) {
+			wp_die( esc_html__( 'Licence not found.', 'reactwoo-api-manager' ), 404 );
+		}
+		if ( (int) $subscription->get_customer_id() !== (int) get_current_user_id() ) {
+			wp_die( esc_html__( 'Licence not found.', 'reactwoo-api-manager' ), 404 );
+		}
 
-    /**
-     * Register rewrite endpoint for license display.
-     */
-    public function register_license_endpoint() {
-        add_rewrite_endpoint( 'license', EP_PAGES );
-    }
+		$key = ReactWoo_Customer_Account_Service::get_instance()->get_owned_license_key( $subscription );
+		if ( is_wp_error( $key ) ) {
+			$data   = $key->get_error_data();
+			$status = ( is_array( $data ) && isset( $data['status'] ) ) ? (int) $data['status'] : 404;
+			wp_die( esc_html( $key->get_error_message() ), $status );
+		}
 
-    /**
-     * Add query var.
-     *
-     * @param array $vars
-     * @return array
-     */
-    public function register_query_vars( $vars ) {
-        $vars[] = 'reactwoo_license_download';
-        return $vars;
-    }
+		$domain = (string) $subscription->get_meta( '_reactwoo_license_domain', true );
+		if ( $domain === '' ) {
+			$parent = $subscription->get_parent();
+			if ( $parent instanceof WC_Order ) {
+				$domain = (string) $parent->get_meta( '_reactwoo_domain', true );
+			}
+		}
 
-    /**
-     * Handle download requests.
-     */
-    public function maybe_handle_license_download() {
-        if ( ! is_user_logged_in() ) {
-            return;
-        }
+		nocache_headers();
+		header( 'Cache-Control: no-store, private' );
+		header( 'Content-Type: text/plain; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="reactwoo-license-subscription-' . $subscription_id . '.txt"' );
 
-        $download = get_query_var( 'reactwoo_license_download' );
-        if ( ! $download ) {
-            return;
-        }
+		echo "ReactWoo Licence Details\n\n";
+		echo "Subscription ID: {$subscription_id}\n";
+		echo 'Registered website: ' . ( $domain !== '' ? $domain : '(not set)' ) . "\n\n";
+		echo "Licence key:\n{$key}\n\n";
+		echo "Keep this file private. You can also copy your key from My Account → Products & licences.\n";
+		exit;
+	}
 
-        // Treat download param as subscription ID and validate ownership.
-        $subscription = function_exists( 'wcs_get_subscription' ) ? wcs_get_subscription( intval( $download ) ) : null;
-        if ( ! $subscription || ! ( $subscription instanceof WC_Subscription ) ) {
-            return;
-        }
-        if ( intval( $subscription->get_customer_id() ) !== intval( get_current_user_id() ) ) {
-            return;
-        }
+	/**
+	 * Local order meta only — no public domain API lookup.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return array{key:string,domain:string}|null
+	 */
+	private function get_local_order_license( $order ) {
+		$key    = (string) $order->get_meta( '_reactwoo_license_key', true );
+		$domain = (string) $order->get_meta( '_reactwoo_license_domain', true );
+		if ( $domain === '' ) {
+			$domain = (string) $order->get_meta( '_reactwoo_domain', true );
+		}
+		if ( $key === '' ) {
+			return null;
+		}
+		return array(
+			'key'    => $key,
+			'domain' => $domain,
+		);
+	}
 
-        $license = $this->get_subscription_license_data( $subscription );
-        if ( ! $license || empty( $license['key'] ) ) {
-            return;
-        }
+	/**
+	 * @param array $license License data with key/domain.
+	 */
+	private function print_masked_license_block( $license ) {
+		if ( empty( $license['key'] ) ) {
+			return;
+		}
 
-        $filename = 'reactwoo-license-' . sanitize_file_name( $license['key'] ) . '.txt';
-        header( 'Content-Type: text/plain' );
-        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+		$masked = ReactWoo_Customer_Account_Service::mask_license_key( $license['key'] );
+		$account_url = wc_get_account_endpoint_url( 'license' );
 
-        echo "Google Reviews Pro \u2013 License Details\n\n";
-        echo "Your Google Reviews Pro license is active and ready to use.\n\n";
-        echo "License Key\n";
-        echo $license['key'] . "\n\n";
-        echo "Registered Domain\n";
-        echo ( ! empty( $license['domain'] ) ? $license['domain'] : '' ) . "\n\n";
-        echo "How to use your license\n\n";
-        echo "Paste the license key into the License section of the Google Reviews Pro plugin.\n\n";
-        echo "Activate the plugin on the registered domain above.\n\n";
-        echo "Enjoy all Pro features\n\n";
-        echo "If you need to move your license, change domains, or need any help, our support team is here to assist you.\n";
-        exit;
-    }
-
-    /**
-     * Add menu item to My Account.
-     *
-     * @param array $items
-     * @return array
-     */
-    public function add_license_menu_item( $items ) {
-        $items['license'] = __( 'License', 'reactwoo-api-manager' );
-        return $items;
-    }
-
-    /**
-     * Display license tab content.
-     */
-    public function render_license_endpoint() {
-        $licenses = $this->get_user_license_rows();
-        if ( empty( $licenses ) ) {
-            echo '<p>' . esc_html__( 'No licenses found. Complete a subscription to generate one.', 'reactwoo-api-manager' ) . '</p>';
-            return;
-        }
-
-        $this->print_license_rows( $licenses );
-    }
-
-    public function render_license_shortcode() {
-        $licenses = $this->get_user_license_rows();
-        if ( empty( $licenses ) ) {
-            return '<p>' . esc_html__( 'No licenses found. Complete a subscription to generate one.', 'reactwoo-api-manager' ) . '</p>';
-        }
-
-        ob_start();
-        $this->print_license_rows( $licenses );
-        return ob_get_clean();
-    }
-
-    private function get_user_license_rows() {
-        $licenses = array();
-        if ( ! function_exists( 'wcs_get_users_subscriptions' ) ) {
-            return $licenses;
-        }
-
-        // wcs_get_users_subscriptions signature differs by version:
-        // - Newer: wcs_get_users_subscriptions( $user_id )
-        // - Some wrappers accept arrays, but not reliably
-        $user_id = get_current_user_id();
-        $subscriptions = wcs_get_users_subscriptions( $user_id );
-        if ( ! is_array( $subscriptions ) ) {
-            $subscriptions = array();
-        }
-        foreach ( $subscriptions as $subscription ) {
-            // Use server as source-of-truth (cached). If meta is missing, we can still show the license.
-            $license = $this->get_subscription_license_data( $subscription );
-            if ( ! $license || empty( $license['key'] ) ) {
-                continue;
-            }
-
-            $item = $subscription->get_items();
-            $product_name = '';
-            if ( ! empty( $item ) ) {
-                $product_name = reset( $item )->get_name();
-            }
-
-            $licenses[] = array(
-                'key'    => $license['key'],
-                'domain' => isset( $license['domain'] ) ? $license['domain'] : '',
-                'name'   => $product_name,
-                'id'     => $subscription->get_id(),
-            );
-
-            // Self-heal: persist meta back to subscription when we successfully discovered a license.
-            if ( ! $subscription->get_meta( '_reactwoo_license_key', true ) ) {
-                $subscription->update_meta_data( '_reactwoo_license_key', $license['key'] );
-                if ( ! empty( $license['domain'] ) ) {
-                    $subscription->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
-                }
-                $subscription->save();
-            }
-        }
-
-        return $licenses;
-    }
-
-    private function print_license_rows( $licenses ) {
-        echo '<div class="reactwoo-licenses-table">';
-        foreach ( $licenses as $license ) {
-            echo '<div class="reactwoo-license-row" style="border:1px solid #dcdcdc;padding:16px;margin-bottom:16px;border-radius:6px;">';
-            echo '<h2>' . esc_html( $license['name'] ?: esc_html__( 'Subscription', 'reactwoo-api-manager' ) ) . ' #' . esc_html( $license['id'] ) . '</h2>';
-            echo '<p><strong>' . esc_html__( 'License Key', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['key'] ) . '</p>';
-            if ( $license['domain'] ) {
-                echo '<p><strong>' . esc_html__( 'Domain', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
-            }
-            $download_url = esc_url( add_query_arg( 'reactwoo_license_download', $license['id'], trailingslashit( get_permalink( wc_get_page_id( 'myaccount' ) ) . 'license' ) ) );
-            echo '<p><a class="button button-secondary" href="' . $download_url . '">' . esc_html__( 'Download License File', 'reactwoo-api-manager' ) . '</a></p>';
-            echo '</div>';
-        }
-        echo '</div>';
-    }
+		echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
+		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Your licence', 'reactwoo-api-manager' ) . '</h2>';
+		echo '<p><strong>' . esc_html__( 'Licence key', 'reactwoo-api-manager' ) . ':</strong> <code>' . esc_html( $masked ) . '</code></p>';
+		if ( ! empty( $license['domain'] ) ) {
+			echo '<p><strong>' . esc_html__( 'Registered website', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
+		}
+		if ( $account_url ) {
+			echo '<p><a class="button" href="' . esc_url( $account_url ) . '">' . esc_html__( 'Manage in Products & licences', 'reactwoo-api-manager' ) . '</a></p>';
+		}
+		echo '</div>';
+	}
 }

@@ -1,0 +1,398 @@
+/* ReactWoo API Manager — Products & licences (Figma 186:2 / 188:2, single-domain model) */
+
+.rw-account {
+	--rw-bg: #f6f7fa;
+	--rw-ink: #11121a;
+	--rw-muted: #666a73;
+	--rw-soft: #7a8088;
+	--rw-border: #e1e4ea;
+	--rw-border-strong: #d9dde7;
+	--rw-panel: #f8f9fb;
+	--rw-purple: #7d4dff;
+	--rw-purple-ink: #4f2ec8;
+	--rw-purple-soft: #eee9ff;
+	--rw-green-bg: #e9f9f0;
+	--rw-green: #198754;
+	--rw-grad: linear-gradient(90deg, #148cff 0%, #7d4dff 55%, #d70dff 100%);
+	color: var(--rw-ink);
+	font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.rw-account__eyebrow {
+	margin: 0 0 8px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--rw-soft);
+}
+
+.rw-account__intro-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.rw-account__title {
+	margin: 0 0 8px;
+	font-family: Montserrat, Inter, system-ui, sans-serif;
+	font-size: clamp(28px, 4vw, 38px);
+	font-weight: 700;
+	line-height: 1.15;
+	color: var(--rw-ink);
+}
+
+.rw-account__subtitle {
+	margin: 0;
+	max-width: 40rem;
+	font-size: 15px;
+	line-height: 1.45;
+	color: var(--rw-muted);
+}
+
+.rw-account__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 44px;
+	padding: 0 18px;
+	border-radius: 10px;
+	border: 1px solid transparent;
+	font-size: 13px;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.rw-account__btn--primary {
+	background: var(--rw-grad);
+	color: #fff;
+}
+
+.rw-account__btn--primary:hover,
+.rw-account__btn--primary:focus {
+	color: #fff;
+	filter: brightness(1.05);
+}
+
+.rw-account__btn--secondary {
+	background: #fff;
+	border-color: var(--rw-border-strong);
+	color: var(--rw-ink);
+}
+
+.rw-account__btn--disabled {
+	background: #eef0f5;
+	color: var(--rw-soft);
+	cursor: not-allowed;
+}
+
+.rw-account__metrics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 20px;
+	margin: 28px 0;
+}
+
+.rw-account__metric,
+.rw-account__card,
+.rw-account__empty,
+.rw-account__help-card,
+.rw-account__orders-card {
+	background: #fff;
+	border: 1px solid var(--rw-border);
+	border-radius: 16px;
+}
+
+.rw-account__metric {
+	padding: 18px;
+	border-radius: 14px;
+}
+
+.rw-account__metric-label {
+	margin: 0 0 7px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	color: var(--rw-soft);
+}
+
+.rw-account__metric-value {
+	margin: 0 0 6px;
+	font-family: Montserrat, Inter, system-ui, sans-serif;
+	font-size: 26px;
+	font-weight: 700;
+}
+
+.rw-account__metric-help,
+.rw-account__muted,
+.rw-account__card-desc {
+	margin: 0;
+	font-size: 11px;
+	line-height: 1.45;
+	color: var(--rw-muted);
+}
+
+.rw-account__section-head {
+	margin-bottom: 14px;
+}
+
+.rw-account__section-head h2,
+.rw-account__help-card h2,
+.rw-account__orders-card h2,
+.rw-account__empty h2 {
+	margin: 0 0 4px;
+	font-family: Montserrat, Inter, system-ui, sans-serif;
+	font-size: 20px;
+	font-weight: 600;
+}
+
+.rw-account__section-head--row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.rw-account__section-head--row a {
+	color: #5b35e8;
+	font-size: 11px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.rw-account__card {
+	padding: 22px;
+	margin-bottom: 18px;
+	box-shadow: 0 10px 26px rgba(18, 20, 31, 0.06);
+}
+
+.rw-account__card-top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 16px;
+}
+
+.rw-account__product-mark {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 72px;
+	height: 72px;
+	border-radius: 14px;
+	background: var(--rw-grad);
+	color: #fff;
+	font-family: Montserrat, Inter, system-ui, sans-serif;
+	font-size: 15px;
+	font-weight: 700;
+	flex: 0 0 auto;
+}
+
+.rw-account__card-copy {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+
+.rw-account__card-title-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.rw-account__card-title-row h3 {
+	margin: 0;
+	font-family: Montserrat, Inter, system-ui, sans-serif;
+	font-size: 18px;
+	font-weight: 600;
+}
+
+.rw-account__card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-left: auto;
+}
+
+.rw-account__pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 26px;
+	padding: 0 10px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.2px;
+	text-transform: uppercase;
+}
+
+.rw-account__pill--active {
+	background: var(--rw-green-bg);
+	color: var(--rw-green);
+}
+
+.rw-account__pill--expiring,
+.rw-account__pill--pending {
+	background: #fff4e5;
+	color: #b45309;
+}
+
+.rw-account__pill--inactive,
+.rw-account__pill--expired {
+	background: #f2f3f7;
+	color: var(--rw-muted);
+}
+
+.rw-account__pill--renew {
+	background: var(--rw-purple-soft);
+	color: #5b35e8;
+	margin-top: 8px;
+}
+
+.rw-account__panels {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+	margin-top: 18px;
+}
+
+.rw-account__panel {
+	background: var(--rw-panel);
+	border-radius: 11px;
+	padding: 13px;
+}
+
+.rw-account__panel-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	color: var(--rw-soft);
+}
+
+.rw-account__copy {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	color: #5b35e8;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.rw-account__copy:disabled {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+.rw-account__masked-key,
+.rw-account__domain {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 500;
+	word-break: break-all;
+}
+
+.rw-account__files {
+	margin: 14px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.rw-account__files a,
+.rw-account__meta-row a {
+	color: #5b35e8;
+	font-size: 12px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.rw-account__meta-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	margin-top: 14px;
+}
+
+.rw-account__footer-grid {
+	display: grid;
+	grid-template-columns: 1.1fr 1fr;
+	gap: 18px;
+	margin-top: 8px;
+}
+
+.rw-account__help-card {
+	background: #11121a;
+	color: #fff;
+	padding: 18px;
+}
+
+.rw-account__help-card .rw-account__eyebrow {
+	display: inline-flex;
+	padding: 6px 11px;
+	border-radius: 999px;
+	background: #2a2e3a;
+	color: #c8a7ff;
+}
+
+.rw-account__help-card h2 {
+	color: #fff;
+	margin-top: 10px;
+}
+
+.rw-account__help-card p {
+	color: #b9bbc4;
+	font-size: 11px;
+}
+
+.rw-account__orders-card,
+.rw-account__empty {
+	padding: 18px;
+}
+
+.rw-account__compact-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--rw-border);
+}
+
+@media (max-width: 782px) {
+	.rw-account__metrics,
+	.rw-account__panels,
+	.rw-account__footer-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.rw-account__card-actions {
+		width: 100%;
+		margin-left: 0;
+	}
+
+	.rw-account__card-actions .rw-account__btn {
+		width: 100%;
+	}
+
+	.rw-account__metrics {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.rw-account__metric:last-child {
+		grid-column: 1 / -1;
+	}
+}

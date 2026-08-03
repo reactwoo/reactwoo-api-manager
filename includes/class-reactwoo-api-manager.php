@@ -6,107 +6,133 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-    exit;
+	exit;
 }
 
 class ReactWoo_API_Manager {
 
-    /**
-     * Plugin instance
-     *
-     * @var ReactWoo_API_Manager
-     */
-    private static $instance = null;
+	/**
+	 * Plugin instance
+	 *
+	 * @var ReactWoo_API_Manager
+	 */
+	private static $instance = null;
 
-    /**
-     * Get plugin instance
-     *
-     * @return ReactWoo_API_Manager
-     */
-    public static function get_instance() {
-        if ( null === self::$instance ) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
+	/**
+	 * Get plugin instance
+	 *
+	 * @return ReactWoo_API_Manager
+	 */
+	public static function get_instance() {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
+		return self::$instance;
+	}
 
-    /**
-     * Constructor
-     */
-    private function __construct() {
-        $this->init();
-    }
+	/**
+	 * Constructor
+	 */
+	private function __construct() {
+		$this->init();
+	}
 
-    /**
-     * Initialize the plugin
-     */
-    private function init() {
-        // Load dependencies
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-email-delayed.php';
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-product-meta.php';
-        require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-subscription-handler.php';
+	/**
+	 * Initialize the plugin
+	 */
+	private function init() {
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-customer-account-service.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-rest-controller.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-email-delayed.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-product-meta.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-subscription-handler.php';
 
-        // Initialize components
-        new ReactWoo_Product_Meta();
-        new ReactWoo_Subscription_Handler();
-        new ReactWoo_License_Display();
-        new ReactWoo_Email_Delayed();
+		new ReactWoo_Product_Meta();
+		new ReactWoo_Subscription_Handler();
+		new ReactWoo_License_Display();
+		new ReactWoo_Account_REST_Controller();
+		new ReactWoo_Email_Delayed();
 
-        // Initialize admin if in admin area
-        if ( is_admin() ) {
-            require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/class-admin.php';
-            ReactWoo_API_Manager_Admin::get_instance();
-        }
+		if ( is_admin() ) {
+			require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/class-admin.php';
+			ReactWoo_API_Manager_Admin::get_instance();
+			add_action( 'admin_notices', array( $this, 'maybe_notice_missing_master_key' ) );
+		}
 
-        // Initialize hooks
-        add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
-        add_action( 'admin_init', array( $this, 'register_settings' ) );
-    }
+		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+	}
 
-    /**
-     * Load plugin textdomain
-     */
-    public function load_textdomain() {
-        $plugin_dir = dirname( plugin_basename( REACTWOO_API_MANAGER_PLUGIN_FILE ) );
-        load_plugin_textdomain( 'reactwoo-api-manager', false, $plugin_dir . '/languages' );
-    }
+	/**
+	 * Warn admins when provisioning secret is missing.
+	 */
+	public function maybe_notice_missing_master_key() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+		if ( ReactWoo_License_Server_API::has_master_key() ) {
+			return;
+		}
 
-    /**
-     * Register plugin settings
-     */
-    public function register_settings() {
-        register_setting( 'reactwoo_api_manager_settings', 'reactwoo_license_server_url', array(
-            'type' => 'string',
-            'sanitize_callback' => 'esc_url_raw',
-            'default' => 'https://license.reactwoo.com',
-        ) );
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__(
+			'ReactWoo API Manager: define REACTWOO_LICENSE_MASTER_KEY in wp-config.php. Licence provisioning and subscription sync are disabled until it is set.',
+			'reactwoo-api-manager'
+		);
+		echo '</p></div>';
+	}
 
-        register_setting( 'reactwoo_api_manager_settings', 'reactwoo_api_key', array(
-            'type' => 'string',
-            'sanitize_callback' => 'sanitize_text_field',
-            'default' => '',
-        ) );
-    }
+	/**
+	 * Load plugin textdomain
+	 */
+	public function load_textdomain() {
+		$plugin_dir = dirname( plugin_basename( REACTWOO_API_MANAGER_PLUGIN_FILE ) );
+		load_plugin_textdomain( 'reactwoo-api-manager', false, $plugin_dir . '/languages' );
+	}
 
-    /**
-     * Get license server URL
-     *
-     * @return string
-     */
-    public static function get_license_server_url() {
-        return get_option( 'reactwoo_license_server_url', 'https://license.reactwoo.com' );
-    }
+	/**
+	 * Register plugin settings
+	 */
+	public function register_settings() {
+		register_setting(
+			'reactwoo_api_manager_settings',
+			'reactwoo_license_server_url',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'esc_url_raw',
+				'default'           => 'https://license.reactwoo.com',
+			)
+		);
 
-    /**
-     * Get API key
-     *
-     * @return string
-     */
-    public static function get_api_key() {
-        return get_option( 'reactwoo_api_key', '' );
-    }
+		register_setting(
+			'reactwoo_api_manager_settings',
+			'reactwoo_api_key',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default'           => '',
+			)
+		);
+	}
+
+	/**
+	 * Get license server URL
+	 *
+	 * @return string
+	 */
+	public static function get_license_server_url() {
+		return get_option( 'reactwoo_license_server_url', 'https://license.reactwoo.com' );
+	}
+
+	/**
+	 * Get API key
+	 *
+	 * @return string
+	 */
+	public static function get_api_key() {
+		return get_option( 'reactwoo_api_key', '' );
+	}
 }
-

@@ -9,6 +9,16 @@ When a task is **implemented** (code changes complete and validated), **always**
 
 **Out of scope:** `reactwoo-api-manager` — `origin` is production SSH (`ssh://reactwoo@reactwoo.com/...`), not GitHub. Commit only unless the user explicitly asks to deploy. See `reactwoo-api-manager/.cursor/rules/git-push.mdc`.
 
+## Git from Cursor — tagged releases only
+
+Ship to GitHub **only** as a versioned release on `main`. This avoids failed CI on WIP `cursor/*` branches opened by Cursor Cloud.
+
+- **Push only** with an annotated tag: `git push origin main "vVERSION"` (branch + tag in **one** push).
+- **Never** `git push origin main` (or any branch) **without** the matching `vVERSION` tag in the same command.
+- **Never** push feature branches or `cursor/*` branches to `origin`.
+- **Never** open PRs (`gh pr create`) or let Cursor Cloud auto-open PRs unless the user **explicitly** asks for a PR workflow.
+- **Commit locally** when the user asks to commit but has not asked to release/tag/push.
+
 ## Steps
 
 1. **Commit** any uncommitted changes with a clear message (own shell command; do not chain with tag/push on Windows).

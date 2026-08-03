@@ -1,22 +1,29 @@
 ---
-description: api-manager origin is production SSH — do not push from agents
+description: api-manager origin is production SSH; github remote is source control
 alwaysApply: true
 ---
 
 # Git push — reactwoo-api-manager
 
-This repo is **not** a GitHub R2 product release. Its `origin` points at the **production server**:
+Remotes:
 
-```text
-ssh://reactwoo@reactwoo.com/home/reactwoo/public_html/wp-content/plugins/reactwoo-api-manager
-```
+| Remote | URL | Purpose |
+|--------|-----|---------|
+| `origin` | `ssh://reactwoo@reactwoo.com/home/reactwoo/public_html/wp-content/plugins/reactwoo-api-manager` | **Production deploy** |
+| `github` | `https://github.com/reactwoo/reactwoo-api-manager.git` | Source control / backup |
 
 ## Agents
 
 - **Commit** workspace/plugin changes when the user asks.
 - **Do not** `git push origin` unless the user explicitly requests a **production deploy**.
-- Pushing `origin` opens **SSH to reactwoo.com** and may prompt for a key/passphrase — that is expected for server deploy, not for Geo satellite releases.
+- Pushing `origin` opens **SSH to reactwoo.com** and may prompt for a key/passphrase.
+- When the user asks to push to GitHub, use `git push github main` (or the requested branch). Do not replace `origin` with GitHub.
+
+## Packaging
+
+- Local zip: `npm run package:zip` → `scripts/package_zip.py` (version-suffixed locally).
+- Do not commit generated `*.zip` files.
 
 ## Product releases (Geo suite, Flow, LinkedIn, etc.)
 
-Use each product’s **GitHub** repo: `git push origin main "vVERSION"`. See `reactwoo-geocore/docs/releases-and-git-tags.md`.
+Those repos use tagged GitHub R2 publishes. This plugin is storefront infrastructure — not an R2 customer plugin update.
