@@ -95,5 +95,14 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
             <p><?php echo esc_html( $connection_status['message'] ); ?></p>
         </div>
     <?php endif; ?>
+
+    <hr>
+    <h2><?php esc_html_e( 'Account diagnostics', 'reactwoo-api-manager' ); ?></h2>
+    <p>
+        <?php esc_html_e( 'My Account redirect logging is on by default. Look for “[ReactWoo API Manager]” in PHP error_log, or WooCommerce → Status → Logs → reactwoo-api-manager-account.', 'reactwoo-api-manager' ); ?>
+    </p>
+    <p>
+        <?php esc_html_e( 'Automatic root redirect to Products & licences is disabled. To re-enable later: define( \'REACTWOO_API_MANAGER_ACCOUNT_REDIRECT\', true );', 'reactwoo-api-manager' ); ?>
+    </p>
 </div>
 

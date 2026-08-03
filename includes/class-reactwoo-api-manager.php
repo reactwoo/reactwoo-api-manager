@@ -43,6 +43,7 @@ class ReactWoo_API_Manager {
 	private function init() {
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-logger.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-customer-account-service.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-rest-controller.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';

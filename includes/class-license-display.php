@@ -19,8 +19,10 @@ class ReactWoo_License_Display {
 		add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
 		add_action( 'init', array( $this, 'register_license_endpoint' ) );
 		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
+		add_action( 'template_redirect', array( $this, 'log_account_request' ), 1 );
 		add_action( 'template_redirect', array( $this, 'maybe_redirect_account_root' ), 5 );
 		add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
+		add_filter( 'wp_redirect', array( $this, 'log_redirects_on_account' ), 10, 2 );
 		add_filter( 'woocommerce_account_menu_items', array( $this, 'add_license_menu_item' ), 20 );
 		add_action( 'woocommerce_account_license_endpoint', array( $this, 'render_license_endpoint' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_account_assets' ) );
@@ -45,27 +47,84 @@ class ReactWoo_License_Display {
 	}
 
 	/**
-	 * Redirect logged-in My Account dashboard/root to Products & licences.
+	 * Log account page requests for loop diagnosis.
+	 */
+	public function log_account_request() {
+		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+			return;
+		}
+		ReactWoo_Account_Logger::log( 'account template_redirect', ReactWoo_Account_Logger::request_context() );
+	}
+
+	/**
+	 * Log every wp_redirect while on My Account (catches theme/other plugins too).
 	 *
-	 * Disabled until rewrites are confirmed ready — otherwise unknown /license/
-	 * URLs bounce back to /my-account/ and browsers spin until timeout.
+	 * @param string $location Redirect URL.
+	 * @param int    $status   HTTP status.
+	 * @return string
+	 */
+	public function log_redirects_on_account( $location, $status = 302 ) {
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$on_account = ( function_exists( 'is_account_page' ) && is_account_page() )
+			|| ( false !== stripos( $uri, 'my-account' ) )
+			|| ( false !== stripos( (string) $location, 'my-account' ) );
+
+		if ( $on_account ) {
+			$trace = array();
+			foreach ( debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 8 ) as $frame ) {
+				if ( empty( $frame['file'] ) ) {
+					continue;
+				}
+				$trace[] = basename( $frame['file'] ) . ':' . ( isset( $frame['line'] ) ? $frame['line'] : 0 );
+			}
+			ReactWoo_Account_Logger::log(
+				'wp_redirect observed',
+				array_merge(
+					ReactWoo_Account_Logger::request_context(),
+					array(
+						'to'     => $location,
+						'status' => (int) $status,
+						'trace'  => $trace,
+					)
+				)
+			);
+		}
+
+		return $location;
+	}
+
+	/**
+	 * Root → Products & licences redirect.
+	 *
+	 * Disabled by default to stop redirect loops. Re-enable only via:
+	 * define( 'REACTWOO_API_MANAGER_ACCOUNT_REDIRECT', true );
 	 */
 	public function maybe_redirect_account_root() {
 		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() || ! is_user_logged_in() ) {
 			return;
 		}
 
-		// Never redirect until the license endpoint rewrite has been flushed.
+		$enabled = defined( 'REACTWOO_API_MANAGER_ACCOUNT_REDIRECT' ) && REACTWOO_API_MANAGER_ACCOUNT_REDIRECT;
+		if ( ! $enabled ) {
+			ReactWoo_Account_Logger::log(
+				'account root redirect skipped (disabled)',
+				ReactWoo_Account_Logger::request_context()
+			);
+			return;
+		}
+
 		if ( ! function_exists( 'reactwoo_api_manager_rewrites_ready' ) || ! reactwoo_api_manager_rewrites_ready() ) {
+			ReactWoo_Account_Logger::log( 'account root redirect skipped (rewrites not ready)', ReactWoo_Account_Logger::request_context() );
 			return;
 		}
 
 		if ( $this->is_license_endpoint_request() ) {
+			ReactWoo_Account_Logger::log( 'account root redirect skipped (already on license)', ReactWoo_Account_Logger::request_context() );
 			return;
 		}
 
-		// Any WooCommerce account endpoint (orders, downloads, license, …) — leave alone.
 		if ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url() ) {
+			ReactWoo_Account_Logger::log( 'account root redirect skipped (other endpoint)', ReactWoo_Account_Logger::request_context() );
 			return;
 		}
 
@@ -86,12 +145,17 @@ class ReactWoo_License_Display {
 
 		foreach ( $known as $key ) {
 			if ( array_key_exists( $key, $query_vars ) ) {
+				ReactWoo_Account_Logger::log(
+					'account root redirect skipped (query var present)',
+					array_merge( ReactWoo_Account_Logger::request_context(), array( 'matched' => $key ) )
+				);
 				return;
 			}
 		}
 
 		$target = wc_get_account_endpoint_url( 'license' );
 		if ( ! $target ) {
+			ReactWoo_Account_Logger::log( 'account root redirect skipped (no target url)', ReactWoo_Account_Logger::request_context() );
 			return;
 		}
 
@@ -99,9 +163,14 @@ class ReactWoo_License_Display {
 		$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
 		$current     = home_url( $path ? $path : '/' );
 		if ( untrailingslashit( $current ) === untrailingslashit( $target ) ) {
+			ReactWoo_Account_Logger::log( 'account root redirect skipped (same url)', ReactWoo_Account_Logger::request_context() );
 			return;
 		}
 
+		ReactWoo_Account_Logger::log(
+			'account root redirect issuing',
+			array_merge( ReactWoo_Account_Logger::request_context(), array( 'to' => $target ) )
+		);
 		wp_safe_redirect( $target, 302 );
 		exit;
 	}
@@ -187,15 +256,13 @@ class ReactWoo_License_Display {
 	 * @return array
 	 */
 	public function add_license_menu_item( $items ) {
+		// Keep Dashboard always — removing it can make WooCommerce redirect the
+		// account root and contribute to redirect loops with /license/.
 		$rebuilt = array();
 		$rebuilt['license'] = __( 'Products & licences', 'reactwoo-api-manager' );
 
 		foreach ( $items as $key => $label ) {
 			if ( 'license' === $key ) {
-				continue;
-			}
-			// Keep Dashboard until rewrites are ready so account root remains usable.
-			if ( 'dashboard' === $key && function_exists( 'reactwoo_api_manager_rewrites_ready' ) && reactwoo_api_manager_rewrites_ready() ) {
 				continue;
 			}
 			$rebuilt[ $key ] = $label;

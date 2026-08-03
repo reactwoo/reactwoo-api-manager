@@ -80,8 +80,9 @@ rw_assert( strpos( $svc_src, 'get_licenses_by_domain' ) === false, 'Account serv
 $display_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-license-display.php' );
 rw_assert( strpos( $display_src, 'maybe_redirect_account_root' ) !== false, 'Account root redirect registered' );
 rw_assert( strpos( $display_src, 'Products & licences' ) !== false, 'Menu label Products & licences' );
-rw_assert( strpos( $display_src, 'reactwoo_api_manager_rewrites_ready' ) !== false, 'Redirect waits for rewrite readiness' );
-rw_assert( strpos( $display_src, 'is_license_endpoint_request' ) !== false, 'Redirect guards against license path loops' );
+rw_assert( strpos( $display_src, 'REACTWOO_API_MANAGER_ACCOUNT_REDIRECT' ) !== false, 'Root redirect is feature-flagged off by default' );
+rw_assert( strpos( $display_src, 'log_redirects_on_account' ) !== false, 'Redirect logging is registered' );
+rw_assert( file_exists( dirname( __DIR__ ) . '/includes/class-account-logger.php' ), 'Account logger class exists' );
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";
