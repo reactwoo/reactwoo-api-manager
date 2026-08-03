@@ -45,6 +45,7 @@ class ReactWoo_API_Manager {
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-logger.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-customer-account-service.php';
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-plugin-download-service.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-rest-controller.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-display.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-email-delayed.php';
@@ -111,6 +112,26 @@ class ReactWoo_API_Manager {
 		register_setting(
 			'reactwoo_api_manager_settings',
 			'reactwoo_api_key',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default'           => '',
+			)
+		);
+
+		register_setting(
+			'reactwoo_api_manager_settings',
+			'reactwoo_updates_api_url',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'esc_url_raw',
+				'default'           => 'https://api.reactwoo.com',
+			)
+		);
+
+		register_setting(
+			'reactwoo_api_manager_settings',
+			'reactwoo_updates_store_download_token',
 			array(
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_text_field',

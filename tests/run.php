@@ -69,12 +69,20 @@ rw_assert( strpos( $rest_src, 'no-store' ) !== false, 'REST sets Cache-Control n
 rw_assert( strpos( $rest_src, "status' => 404" ) !== false, 'Foreign subscription returns 404' );
 rw_assert( strpos( $rest_src, "status' => 401" ) !== false, 'Logged-out returns 401' );
 
-// 7) Download matching uses Woo URLs only (service source).
+// 7) Download matching uses Woo URLs + store-gated synthetic files.
 $svc_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-customer-account-service.php' );
 rw_assert( strpos( $svc_src, 'wc_get_customer_available_downloads' ) !== false, 'Uses Woo download permissions' );
+rw_assert( strpos( $svc_src, 'ReactWoo_Plugin_Download_Service' ) !== false, 'Merges store plugin downloads' );
 rw_assert( strpos( $svc_src, '_reactwoo_license_key' ) !== false, 'Uses _reactwoo_license_key meta' );
 rw_assert( strpos( $svc_src, '_reactwoo_license_domain' ) !== false, 'Uses _reactwoo_license_domain meta' );
 rw_assert( strpos( $svc_src, 'get_licenses_by_domain' ) === false, 'Account service avoids public domain lookup' );
+
+$dl_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-plugin-download-service.php' );
+rw_assert( strpos( $dl_src, 'store-download' ) !== false, 'Plugin download service calls store-download' );
+rw_assert( strpos( $dl_src, '_reactwoo_plugin_slug' ) !== false, 'Resolves product plugin slug meta' );
+rw_assert( in_array( 'active', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Active subscriptions are entitled' );
+rw_assert( in_array( 'pending-cancel', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Pending-cancel subscriptions are entitled' );
+rw_assert( ! in_array( 'cancelled', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Cancelled subscriptions are not entitled' );
 
 // 8) Account root redirect to /license/
 $display_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-license-display.php' );
@@ -82,6 +90,8 @@ rw_assert( strpos( $display_src, 'maybe_redirect_account_root' ) !== false, 'Acc
 rw_assert( strpos( $display_src, 'Products & licences' ) !== false, 'Menu label Products & licences' );
 rw_assert( strpos( $display_src, 'REACTWOO_API_MANAGER_ACCOUNT_REDIRECT' ) !== false, 'Root redirect is feature-flagged off by default' );
 rw_assert( strpos( $display_src, 'log_redirects_on_account' ) !== false, 'Redirect logging is registered' );
+rw_assert( strpos( $display_src, 'maybe_handle_plugin_download' ) !== false, 'Plugin ZIP download proxy registered' );
+rw_assert( strpos( $display_src, 'inject_plugin_downloads' ) !== false, 'Woo Downloads injection registered' );
 rw_assert( file_exists( dirname( __DIR__ ) . '/includes/class-account-logger.php' ), 'Account logger class exists' );
 
 if ( $failures > 0 ) {

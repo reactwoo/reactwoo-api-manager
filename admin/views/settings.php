@@ -13,11 +13,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( isset( $_POST['submit'] ) && check_admin_referer( 'reactwoo_api_manager_settings' ) ) {
     update_option( 'reactwoo_license_server_url', esc_url_raw( $_POST['reactwoo_license_server_url'] ) );
     update_option( 'reactwoo_api_key', sanitize_text_field( $_POST['reactwoo_api_key'] ) );
+    update_option( 'reactwoo_updates_api_url', esc_url_raw( $_POST['reactwoo_updates_api_url'] ) );
+    update_option( 'reactwoo_updates_store_download_token', sanitize_text_field( $_POST['reactwoo_updates_store_download_token'] ) );
     echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved successfully.', 'reactwoo-api-manager' ) . '</p></div>';
 }
 
 $license_server_url = get_option( 'reactwoo_license_server_url', 'https://license.reactwoo.com' );
 $api_key = get_option( 'reactwoo_api_key', '' );
+$updates_api_url = get_option( 'reactwoo_updates_api_url', 'https://api.reactwoo.com' );
+$store_download_token = get_option( 'reactwoo_updates_store_download_token', '' );
 
 // Test connection
 $connection_status = null;
@@ -74,6 +78,38 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
                            autocomplete="off" />
                     <p class="description">
                         <?php esc_html_e( 'Shared ReactWoo API key used for licence provisioning, subscription sync, and authenticated licence-server requests. Must match WOOCOMMERCE_API_KEY (or RW_MASTER_KEY) on the licence server.', 'reactwoo-api-manager' ); ?>
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="reactwoo_updates_api_url"><?php esc_html_e( 'Updates API URL', 'reactwoo-api-manager' ); ?></label>
+                </th>
+                <td>
+                    <input type="url"
+                           id="reactwoo_updates_api_url"
+                           name="reactwoo_updates_api_url"
+                           value="<?php echo esc_attr( $updates_api_url ); ?>"
+                           class="regular-text"
+                           required />
+                    <p class="description">
+                        <?php esc_html_e( 'Base URL for plugin ZIP distribution (e.g. https://api.reactwoo.com). Used for My Account satellite downloads.', 'reactwoo-api-manager' ); ?>
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="reactwoo_updates_store_download_token"><?php esc_html_e( 'Store download token', 'reactwoo-api-manager' ); ?></label>
+                </th>
+                <td>
+                    <input type="password"
+                           id="reactwoo_updates_store_download_token"
+                           name="reactwoo_updates_store_download_token"
+                           value="<?php echo esc_attr( $store_download_token ); ?>"
+                           class="regular-text"
+                           autocomplete="new-password" />
+                    <p class="description">
+                        <?php esc_html_e( 'Must match UPDATES_STORE_DOWNLOAD_TOKEN on api.reactwoo.com. Enables My Account plugin ZIP links for entitled subscriptions.', 'reactwoo-api-manager' ); ?>
                     </p>
                 </td>
             </tr>

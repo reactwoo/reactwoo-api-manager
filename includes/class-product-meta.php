@@ -61,6 +61,7 @@ class ReactWoo_Product_Meta {
             'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
             'value' => $selected_package_id,
         ) );
+        $this->render_plugin_slug_field( $post->ID );
         echo '</div>';
     }
 
@@ -98,6 +99,41 @@ class ReactWoo_Product_Meta {
             update_post_meta( $post_id, '_reactwoo_license_package_id', intval( $_POST['_reactwoo_license_package_id'] ) );
         } else {
             delete_post_meta( $post_id, '_reactwoo_license_package_id' );
+        }
+        $this->save_plugin_slug_field( $post_id );
+    }
+
+    /**
+     * Plugin catalog slug used for My Account R2 downloads.
+     *
+     * @param int $post_id Product ID.
+     */
+    private function render_plugin_slug_field( $post_id ) {
+        $slug = (string) get_post_meta( $post_id, '_reactwoo_plugin_slug', true );
+        woocommerce_wp_text_input(
+            array(
+                'id'          => '_reactwoo_plugin_slug',
+                'label'       => __( 'Plugin download slug', 'reactwoo-api-manager' ),
+                'description' => __( 'R2 / updates catalog slug for My Account ZIP downloads (e.g. reactwoo-geo-optimise). Leave blank to fall back to the license package slug.', 'reactwoo-api-manager' ),
+                'desc_tip'    => true,
+                'value'       => $slug,
+                'placeholder' => 'reactwoo-geo-optimise',
+            )
+        );
+    }
+
+    /**
+     * @param int $post_id Product ID.
+     */
+    private function save_plugin_slug_field( $post_id ) {
+        if ( ! isset( $_POST['_reactwoo_plugin_slug'] ) ) {
+            return;
+        }
+        $slug = strtolower( sanitize_title( wp_unslash( $_POST['_reactwoo_plugin_slug'] ) ) );
+        if ( $slug !== '' && preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug ) ) {
+            update_post_meta( $post_id, '_reactwoo_plugin_slug', $slug );
+        } else {
+            delete_post_meta( $post_id, '_reactwoo_plugin_slug' );
         }
     }
 
@@ -174,6 +210,7 @@ class ReactWoo_Product_Meta {
                             'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
                             'value' => $selected_package_id,
                         ) );
+                        $this->render_plugin_slug_field( $post->ID );
 
                         if ( $selected_package_id ) {
                             $selected_package = $this->find_package_by_id( $packages, $selected_package_id );

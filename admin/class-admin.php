@@ -93,6 +93,16 @@ class ReactWoo_API_Manager_Admin {
             'default' => 'https://license.reactwoo.com',
         ) );
 
+        register_setting( 'reactwoo_api_manager_settings', 'reactwoo_updates_api_url', array(
+            'type' => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+            'default' => 'https://api.reactwoo.com',
+        ) );
+        register_setting( 'reactwoo_api_manager_settings', 'reactwoo_updates_store_download_token', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '',
+        ) );
         register_setting( 'reactwoo_api_manager_settings', 'reactwoo_api_key', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',

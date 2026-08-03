@@ -22,7 +22,9 @@ class ReactWoo_License_Display {
 		add_filter( 'woocommerce_get_query_vars', array( $this, 'register_wc_query_var' ) );
 		add_action( 'template_redirect', array( $this, 'log_account_request' ), 1 );
 		add_action( 'template_redirect', array( $this, 'maybe_redirect_account_root' ), 5 );
+		add_action( 'template_redirect', array( $this, 'maybe_handle_plugin_download' ), 6 );
 		add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
+		add_filter( 'woocommerce_customer_available_downloads', array( $this, 'inject_plugin_downloads' ), 20, 2 );
 		add_filter( 'wp_redirect', array( $this, 'log_redirects_on_account' ), 10, 2 );
 		add_filter( 'woocommerce_account_menu_items', array( $this, 'add_license_menu_item' ), 20 );
 		add_action( 'woocommerce_account_license_endpoint', array( $this, 'render_license_endpoint' ) );
@@ -44,7 +46,127 @@ class ReactWoo_License_Display {
 	 */
 	public function register_query_vars( $vars ) {
 		$vars[] = 'reactwoo_license_download';
+		$vars[] = ReactWoo_Plugin_Download_Service::QUERY_VAR;
 		return $vars;
+	}
+
+	/**
+	 * Inject entitled plugin ZIPs into WooCommerce Downloads.
+	 *
+	 * @param array<int, array<string, mixed>> $downloads Downloads.
+	 * @param int                              $user_id User ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function inject_plugin_downloads( $downloads, $user_id ) {
+		$user_id = absint( $user_id );
+		if ( ! $user_id || ! function_exists( 'wcs_get_users_subscriptions' ) ) {
+			return $downloads;
+		}
+		if ( ! is_array( $downloads ) ) {
+			$downloads = array();
+		}
+
+		$subscriptions = wcs_get_users_subscriptions( $user_id );
+		if ( ! is_array( $subscriptions ) ) {
+			return $downloads;
+		}
+
+		foreach ( $subscriptions as $subscription ) {
+			if ( ! $subscription instanceof WC_Subscription ) {
+				continue;
+			}
+			if ( (int) $subscription->get_customer_id() !== $user_id ) {
+				continue;
+			}
+			$file = ReactWoo_Plugin_Download_Service::build_synthetic_file( $subscription );
+			if ( ! $file ) {
+				continue;
+			}
+
+			$product_name = __( 'ReactWoo plugin', 'reactwoo-api-manager' );
+			$product_id   = 0;
+			foreach ( $subscription->get_items() as $item ) {
+				$product_name = $item->get_name();
+				$product      = $item->get_product();
+				if ( $product ) {
+					$product_id = (int) $product->get_id();
+				}
+				break;
+			}
+
+			$downloads[] = array(
+				'download_url'         => $file['url'],
+				'download_id'          => 'reactwoo-plugin-' . (int) $subscription->get_id(),
+				'product_id'           => $product_id,
+				'product_name'         => $product_name,
+				'download_name'        => $file['name'],
+				'order_id'             => 0,
+				'downloads_remaining'  => '',
+				'access_expires'       => null,
+				'file'                 => array(
+					'name' => $file['name'],
+					'file' => $file['url'],
+				),
+			);
+		}
+
+		return $downloads;
+	}
+
+	/**
+	 * Entitled My Account plugin ZIP: nonce + ownership → 302 to signed R2 URL.
+	 */
+	public function maybe_handle_plugin_download() {
+		$subscription_id = absint( get_query_var( ReactWoo_Plugin_Download_Service::QUERY_VAR ) );
+		if ( ! $subscription_id && isset( $_GET[ ReactWoo_Plugin_Download_Service::QUERY_VAR ] ) ) {
+			$subscription_id = absint( wp_unslash( $_GET[ ReactWoo_Plugin_Download_Service::QUERY_VAR ] ) );
+		}
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		if ( ! is_user_logged_in() ) {
+			auth_redirect();
+			exit;
+		}
+
+		$nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+		if ( ! $nonce || ! wp_verify_nonce( $nonce, ReactWoo_Plugin_Download_Service::QUERY_VAR . '_' . $subscription_id ) ) {
+			wp_die( esc_html__( 'Invalid download request.', 'reactwoo-api-manager' ), 403 );
+		}
+
+		$subscription = function_exists( 'wcs_get_subscription' ) ? wcs_get_subscription( $subscription_id ) : null;
+		if ( ! $subscription instanceof WC_Subscription ) {
+			wp_die( esc_html__( 'Download not found.', 'reactwoo-api-manager' ), 404 );
+		}
+		if ( (int) $subscription->get_customer_id() !== (int) get_current_user_id() ) {
+			wp_die( esc_html__( 'Download not found.', 'reactwoo-api-manager' ), 404 );
+		}
+		if ( ! ReactWoo_Plugin_Download_Service::subscription_can_download( $subscription ) ) {
+			wp_die( esc_html__( 'Download not available for this subscription.', 'reactwoo-api-manager' ), 403 );
+		}
+
+		$slug = ReactWoo_Plugin_Download_Service::get_plugin_slug_for_subscription( $subscription );
+		if ( $slug === '' ) {
+			wp_die( esc_html__( 'Plugin download is not configured for this product.', 'reactwoo-api-manager' ), 404 );
+		}
+
+		$result = ReactWoo_Plugin_Download_Service::request_store_download( $slug );
+		if ( is_wp_error( $result ) ) {
+			$data   = $result->get_error_data();
+			$status = ( is_array( $data ) && isset( $data['status'] ) ) ? (int) $data['status'] : 502;
+			wp_die( esc_html( $result->get_error_message() ), $status ? $status : 502 );
+		}
+
+		$download_url = esc_url_raw( (string) $result['download_url'] );
+		if ( $download_url === '' || 0 !== strpos( $download_url, 'https://' ) ) {
+			wp_die( esc_html__( 'Download unavailable.', 'reactwoo-api-manager' ), 502 );
+		}
+
+		nocache_headers();
+		// Signed R2 URLs are off-site; wp_safe_redirect would reject them.
+		wp_redirect( $download_url, 302 ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+		exit;
 	}
 
 	/**
