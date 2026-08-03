@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.2
+Stable tag: 2.1.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,10 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.3 =
+* Stop frontend rewrite flushes and unsafe account redirects that could hang My Account.
+* Keep Dashboard until licence rewrites are ready.
 
 = 2.1.2 =
 * Use the existing Settings API Key for provisioning auth (no separate wp-config master key required).

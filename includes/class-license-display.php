@@ -47,17 +47,20 @@ class ReactWoo_License_Display {
 	/**
 	 * Redirect logged-in My Account dashboard/root to Products & licences.
 	 *
-	 * Guard against rewrite-not-flushed loops: if the request already targets
-	 * /license/, never redirect again even when the query var is missing.
+	 * Disabled until rewrites are confirmed ready — otherwise unknown /license/
+	 * URLs bounce back to /my-account/ and browsers spin until timeout.
 	 */
 	public function maybe_redirect_account_root() {
 		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() || ! is_user_logged_in() ) {
 			return;
 		}
 
-		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-		$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
-		if ( $path && preg_match( '#/my-account/license(?:/|$)#i', trailingslashit( $path ) ) ) {
+		// Never redirect until the license endpoint rewrite has been flushed.
+		if ( ! function_exists( 'reactwoo_api_manager_rewrites_ready' ) || ! reactwoo_api_manager_rewrites_ready() ) {
+			return;
+		}
+
+		if ( $this->is_license_endpoint_request() ) {
 			return;
 		}
 
@@ -92,14 +95,45 @@ class ReactWoo_License_Display {
 			return;
 		}
 
-		// Avoid redirecting to the same effective URL.
-		$current = home_url( $path ? $path : '/' );
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+		$current     = home_url( $path ? $path : '/' );
 		if ( untrailingslashit( $current ) === untrailingslashit( $target ) ) {
 			return;
 		}
 
 		wp_safe_redirect( $target, 302 );
 		exit;
+	}
+
+	/**
+	 * Whether the current request already targets the licence endpoint.
+	 *
+	 * @return bool
+	 */
+	private function is_license_endpoint_request() {
+		global $wp;
+		if ( isset( $wp->query_vars['license'] ) ) {
+			return true;
+		}
+
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+		if ( $path === '' ) {
+			return false;
+		}
+
+		$account_id = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( 'myaccount' ) : 0;
+		$slug       = 'my-account';
+		if ( $account_id > 0 ) {
+			$account_post = get_post( $account_id );
+			if ( $account_post && ! empty( $account_post->post_name ) ) {
+				$slug = $account_post->post_name;
+			}
+		}
+
+		$pattern = '#' . preg_quote( '/' . trim( $slug, '/' ) . '/license', '#' ) . '(?:/|$)#i';
+		return (bool) preg_match( $pattern, trailingslashit( $path ) );
 	}
 
 	/**
@@ -153,13 +187,15 @@ class ReactWoo_License_Display {
 	 * @return array
 	 */
 	public function add_license_menu_item( $items ) {
-		unset( $items['dashboard'] );
-
 		$rebuilt = array();
 		$rebuilt['license'] = __( 'Products & licences', 'reactwoo-api-manager' );
 
 		foreach ( $items as $key => $label ) {
 			if ( 'license' === $key ) {
+				continue;
+			}
+			// Keep Dashboard until rewrites are ready so account root remains usable.
+			if ( 'dashboard' === $key && function_exists( 'reactwoo_api_manager_rewrites_ready' ) && reactwoo_api_manager_rewrites_ready() ) {
 				continue;
 			}
 			$rebuilt[ $key ] = $label;
@@ -172,12 +208,18 @@ class ReactWoo_License_Display {
 	 * Display Products & licences endpoint.
 	 */
 	public function render_license_endpoint() {
-		$records = reactwoo_api_manager_get_customer_account_records( get_current_user_id() );
+		try {
+			$records = reactwoo_api_manager_get_customer_account_records( get_current_user_id() );
+		} catch ( Exception $e ) {
+			$records = array();
+			echo '<p>' . esc_html__( 'Unable to load your products right now. Please try again shortly.', 'reactwoo-api-manager' ) . '</p>';
+			return;
+		}
 
 		wc_get_template(
 			'myaccount/license.php',
 			array(
-				'reactwoo_records' => $records,
+				'reactwoo_records' => is_array( $records ) ? $records : array(),
 			),
 			'',
 			REACTWOO_API_MANAGER_PLUGIN_DIR . 'templates/'

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ReactWoo API Manager
  * Description: Integrates WooCommerce Subscriptions with the ReactWoo License Server for secure license key generation and management.
- * Version: 2.1.2
+ * Version: 2.1.3
  * Author: ReactWoo
  * Author URI: https://reactwoo.com
  * License: GPL-3.0-or-later
@@ -19,7 +19,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // Define plugin constants
-define( 'REACTWOO_API_MANAGER_VERSION', '2.1.2' );
+define( 'REACTWOO_API_MANAGER_VERSION', '2.1.3' );
 define( 'REACTWOO_API_MANAGER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
@@ -32,38 +32,67 @@ function reactwoo_api_manager_register_license_endpoint() {
 }
 
 /**
+ * Whether licence endpoint rewrites have been flushed for this plugin version.
+ *
+ * @return bool
+ */
+function reactwoo_api_manager_rewrites_ready() {
+	return get_option( 'reactwoo_api_manager_rewrite_version', '' ) === REACTWOO_API_MANAGER_VERSION;
+}
+
+/**
  * Activation: register endpoint and flush rewrites once.
  */
 function reactwoo_api_manager_activate() {
 	reactwoo_api_manager_register_license_endpoint();
-	flush_rewrite_rules();
+	flush_rewrite_rules( false );
 	update_option( 'reactwoo_api_manager_rewrite_version', REACTWOO_API_MANAGER_VERSION, false );
+	delete_transient( 'reactwoo_api_manager_needs_rewrite_flush' );
 }
 
 /**
  * Deactivation: flush rewrites once.
  */
 function reactwoo_api_manager_deactivate() {
-	flush_rewrite_rules();
+	flush_rewrite_rules( false );
+	delete_option( 'reactwoo_api_manager_rewrite_version' );
 }
 
 /**
- * One-time rewrite flush after version upgrades (avoids /license/ 404 → redirect loops).
+ * Queue a one-time rewrite flush (never flush on the frontend critical path).
  */
-function reactwoo_api_manager_maybe_flush_rewrites() {
-	$stored = get_option( 'reactwoo_api_manager_rewrite_version', '' );
-	if ( $stored === REACTWOO_API_MANAGER_VERSION ) {
+function reactwoo_api_manager_maybe_queue_rewrite_flush() {
+	if ( reactwoo_api_manager_rewrites_ready() ) {
 		return;
 	}
+	set_transient( 'reactwoo_api_manager_needs_rewrite_flush', 1, DAY_IN_SECONDS );
+}
+
+/**
+ * Perform queued rewrite flush from wp-admin only.
+ */
+function reactwoo_api_manager_maybe_flush_rewrites() {
+	if ( reactwoo_api_manager_rewrites_ready() && ! get_transient( 'reactwoo_api_manager_needs_rewrite_flush' ) ) {
+		return;
+	}
+	if ( get_transient( 'reactwoo_api_manager_flushing' ) ) {
+		return;
+	}
+
+	set_transient( 'reactwoo_api_manager_flushing', 1, 2 * MINUTE_IN_SECONDS );
 	reactwoo_api_manager_register_license_endpoint();
-	flush_rewrite_rules( false );
+	// Mark ready before flush so concurrent requests do not re-enter.
 	update_option( 'reactwoo_api_manager_rewrite_version', REACTWOO_API_MANAGER_VERSION, false );
+	flush_rewrite_rules( false );
+	delete_transient( 'reactwoo_api_manager_needs_rewrite_flush' );
+	delete_transient( 'reactwoo_api_manager_flushing' );
 }
 
 register_activation_hook( __FILE__, 'reactwoo_api_manager_activate' );
 register_deactivation_hook( __FILE__, 'reactwoo_api_manager_deactivate' );
 add_action( 'init', 'reactwoo_api_manager_register_license_endpoint', 5 );
-add_action( 'init', 'reactwoo_api_manager_maybe_flush_rewrites', 20 );
+add_action( 'init', 'reactwoo_api_manager_maybe_queue_rewrite_flush', 20 );
+add_action( 'admin_init', 'reactwoo_api_manager_maybe_flush_rewrites', 5 );
 
 // Declare compatibility with WooCommerce features
 add_action( 'before_woocommerce_init', function() {

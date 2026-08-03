@@ -45,9 +45,17 @@ class ReactWoo_Customer_Account_Service {
 			return array();
 		}
 
-		$downloads = function_exists( 'wc_get_customer_available_downloads' )
-			? wc_get_customer_available_downloads( $user_id )
-			: array();
+		$downloads = array();
+		if ( function_exists( 'wc_get_customer_available_downloads' ) ) {
+			try {
+				$maybe = wc_get_customer_available_downloads( $user_id );
+				if ( is_array( $maybe ) ) {
+					$downloads = $maybe;
+				}
+			} catch ( Exception $e ) {
+				$downloads = array();
+			}
+		}
 
 		$records = array();
 		foreach ( $subscriptions as $subscription ) {
@@ -58,7 +66,11 @@ class ReactWoo_Customer_Account_Service {
 				continue;
 			}
 
-			$record = $this->build_record( $subscription, $downloads );
+			try {
+				$record = $this->build_record( $subscription, $downloads );
+			} catch ( Exception $e ) {
+				$record = null;
+			}
 			if ( $record ) {
 				$records[] = $record;
 			}
