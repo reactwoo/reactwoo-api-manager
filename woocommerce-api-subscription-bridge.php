@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ReactWoo API Manager
  * Description: Integrates WooCommerce Subscriptions with the ReactWoo License Server for secure license key generation and management.
- * Version: 2.1.0
+ * Version: 2.1.1
  * Author: ReactWoo
  * Author URI: https://reactwoo.com
  * License: GPL-3.0-or-later
@@ -19,7 +19,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // Define plugin constants
-define( 'REACTWOO_API_MANAGER_VERSION', '2.1.0' );
+define( 'REACTWOO_API_MANAGER_VERSION', '2.1.1' );
 define( 'REACTWOO_API_MANAGER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
@@ -37,6 +37,7 @@ function reactwoo_api_manager_register_license_endpoint() {
 function reactwoo_api_manager_activate() {
 	reactwoo_api_manager_register_license_endpoint();
 	flush_rewrite_rules();
+	update_option( 'reactwoo_api_manager_rewrite_version', REACTWOO_API_MANAGER_VERSION, false );
 }
 
 /**
@@ -46,8 +47,23 @@ function reactwoo_api_manager_deactivate() {
 	flush_rewrite_rules();
 }
 
+/**
+ * One-time rewrite flush after version upgrades (avoids /license/ 404 → redirect loops).
+ */
+function reactwoo_api_manager_maybe_flush_rewrites() {
+	$stored = get_option( 'reactwoo_api_manager_rewrite_version', '' );
+	if ( $stored === REACTWOO_API_MANAGER_VERSION ) {
+		return;
+	}
+	reactwoo_api_manager_register_license_endpoint();
+	flush_rewrite_rules( false );
+	update_option( 'reactwoo_api_manager_rewrite_version', REACTWOO_API_MANAGER_VERSION, false );
+}
+
 register_activation_hook( __FILE__, 'reactwoo_api_manager_activate' );
 register_deactivation_hook( __FILE__, 'reactwoo_api_manager_deactivate' );
+add_action( 'init', 'reactwoo_api_manager_register_license_endpoint', 5 );
+add_action( 'init', 'reactwoo_api_manager_maybe_flush_rewrites', 20 );
 
 // Declare compatibility with WooCommerce features
 add_action( 'before_woocommerce_init', function() {

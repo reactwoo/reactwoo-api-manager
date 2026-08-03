@@ -45,18 +45,30 @@ class ReactWoo_License_Display {
 	}
 
 	/**
-	 * Redirect logged-in My Account root to Products & licences.
+	 * Redirect logged-in My Account dashboard/root to Products & licences.
+	 *
+	 * Guard against rewrite-not-flushed loops: if the request already targets
+	 * /license/, never redirect again even when the query var is missing.
 	 */
 	public function maybe_redirect_account_root() {
 		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() || ! is_user_logged_in() ) {
 			return;
 		}
 
-		global $wp;
-		$endpoint = isset( $wp->query_vars ) ? $wp->query_vars : array();
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+		if ( $path && preg_match( '#/my-account/license(?:/|$)#i', trailingslashit( $path ) ) ) {
+			return;
+		}
 
-		// Root account page has no endpoint query vars (or only pagename).
-		$known = array(
+		// Any WooCommerce account endpoint (orders, downloads, license, …) — leave alone.
+		if ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url() ) {
+			return;
+		}
+
+		global $wp;
+		$query_vars = ( isset( $wp->query_vars ) && is_array( $wp->query_vars ) ) ? $wp->query_vars : array();
+		$known      = array(
 			'orders',
 			'view-order',
 			'downloads',
@@ -70,16 +82,24 @@ class ReactWoo_License_Display {
 		);
 
 		foreach ( $known as $key ) {
-			if ( array_key_exists( $key, $endpoint ) ) {
+			if ( array_key_exists( $key, $query_vars ) ) {
 				return;
 			}
 		}
 
 		$target = wc_get_account_endpoint_url( 'license' );
-		if ( $target ) {
-			wp_safe_redirect( $target );
-			exit;
+		if ( ! $target ) {
+			return;
 		}
+
+		// Avoid redirecting to the same effective URL.
+		$current = home_url( $path ? $path : '/' );
+		if ( untrailingslashit( $current ) === untrailingslashit( $target ) ) {
+			return;
+		}
+
+		wp_safe_redirect( $target, 302 );
+		exit;
 	}
 
 	/**

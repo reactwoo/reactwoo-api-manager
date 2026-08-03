@@ -81,6 +81,7 @@ $display_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-license-
 rw_assert( strpos( $display_src, 'maybe_redirect_account_root' ) !== false, 'Account root redirect registered' );
 rw_assert( strpos( $display_src, 'Products & licences' ) !== false, 'Menu label Products & licences' );
 rw_assert( strpos( $display_src, "unset( \$items['dashboard'] )" ) !== false, 'Dashboard removed from nav' );
+rw_assert( strpos( $display_src, '/my-account/license' ) !== false, 'Redirect guards against license path loops' );
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";
