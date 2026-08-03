@@ -59,7 +59,7 @@ rw_assert( stripos( $template, '1 of' ) === false, 'No invented activation count
 // 5) Master key not committed.
 $api_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-license-server-api.php' );
 rw_assert( strpos( $api_src, 'V3tJYMQovxmDHI3IGnqZdVeBRyzCg91I4YgVyN1X4ZN' ) === false, 'Committed master key removed' );
-rw_assert( strpos( $api_src, 'REACTWOO_LICENSE_MASTER_KEY' ) !== false, 'Master key constant referenced' );
+rw_assert( strpos( $api_src, 'get_api_key' ) !== false, 'Shared API key used for provisioning auth' );
 
 // 6) REST controller ownership / nonce / cache headers present in source.
 $rest_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-account-rest-controller.php' );

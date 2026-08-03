@@ -49,7 +49,7 @@ class ReactWoo_License_Server_API {
     }
 
     /**
-     * Whether a server-side master key is configured.
+     * Whether a provisioning/auth key is configured.
      *
      * @return bool
      */
@@ -58,15 +58,24 @@ class ReactWoo_License_Server_API {
     }
 
     /**
-     * Read master key from wp-config constant only. Never from options or requests.
+     * Shared storefront API key used for licence-server auth.
+     *
+     * Prefer the existing Settings → API Key (`reactwoo_api_key`), which is the
+     * same key used across ReactWoo storefront integrations. Optional wp-config
+     * override remains supported but is not required.
      *
      * @return string
      */
     public static function resolve_master_key() {
         if ( defined( 'REACTWOO_LICENSE_MASTER_KEY' ) && is_string( REACTWOO_LICENSE_MASTER_KEY ) ) {
-            return trim( REACTWOO_LICENSE_MASTER_KEY );
+            $constant = trim( REACTWOO_LICENSE_MASTER_KEY );
+            if ( $constant !== '' ) {
+                return $constant;
+            }
         }
-        return '';
+
+        $api_key = ReactWoo_API_Manager::get_api_key();
+        return is_string( $api_key ) ? trim( $api_key ) : '';
     }
 
     /**
@@ -124,7 +133,7 @@ class ReactWoo_License_Server_API {
         if ( ! $this->master_key ) {
             return new WP_Error(
                 'missing_master_key',
-                'REACTWOO_LICENSE_MASTER_KEY is not defined. Add it to wp-config.php.'
+                'ReactWoo API Key is not configured. Set it under ReactWoo License Manager → Settings.'
             );
         }
 
@@ -234,7 +243,7 @@ class ReactWoo_License_Server_API {
         if ( ! $this->master_key ) {
             return new WP_Error(
                 'missing_master_key',
-                'REACTWOO_LICENSE_MASTER_KEY is not defined. Add it to wp-config.php.'
+                'ReactWoo API Key is not configured. Set it under ReactWoo License Manager → Settings.'
             );
         }
 

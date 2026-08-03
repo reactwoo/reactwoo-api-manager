@@ -73,18 +73,8 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
                            class="regular-text" 
                            autocomplete="off" />
                     <p class="description">
-                        <?php esc_html_e( 'Optional: API key for authenticated requests to the license server', 'reactwoo-api-manager' ); ?>
+                        <?php esc_html_e( 'Shared ReactWoo API key used for licence provisioning, subscription sync, and authenticated licence-server requests. Must match WOOCOMMERCE_API_KEY (or RW_MASTER_KEY) on the licence server.', 'reactwoo-api-manager' ); ?>
                     </p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><?php esc_html_e( 'Master key', 'reactwoo-api-manager' ); ?></th>
-                <td>
-                    <?php if ( ReactWoo_License_Server_API::has_master_key() ) : ?>
-                        <p><span class="dashicons dashicons-yes-alt" style="color:#198754;"></span> <?php esc_html_e( 'REACTWOO_LICENSE_MASTER_KEY is defined in wp-config.php.', 'reactwoo-api-manager' ); ?></p>
-                    <?php else : ?>
-                        <p><span class="dashicons dashicons-warning" style="color:#b32d2e;"></span> <?php esc_html_e( 'Missing. Add define( \'REACTWOO_LICENSE_MASTER_KEY\', \'…\' ); to wp-config.php. Never store this in the database or commit it to Git.', 'reactwoo-api-manager' ); ?></p>
-                    <?php endif; ?>
                 </td>
             </tr>
         </table>

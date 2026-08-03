@@ -1,22 +1,24 @@
-# Master key configuration
+# Shared API key (provisioning auth)
 
-Provisioning uses `X-RW-Master-Key` against the ReactWoo licence server.
+API Manager authenticates provision/sync with the **same Settings → API Key** used for other licence-server calls (`reactwoo_api_key`).
 
-## Required
+It is sent as the `X-RW-Master-Key` header.
 
-In `wp-config.php` (never in the database or Git):
+## Storefront
+
+WooCommerce → ReactWoo License Manager → Settings → **API Key**
+
+Optional override (not required):
 
 ```php
-define( 'REACTWOO_LICENSE_MASTER_KEY', 'your-rotated-secret' );
+define( 'REACTWOO_LICENSE_MASTER_KEY', '…' );
 ```
 
-If the constant is missing, provision and subscription sync fail safely and an admin notice is shown.
+## Licence server
 
-## Rotation
+Accepts either:
 
-The previous key was committed in Git history and must be treated as compromised:
+- `WOOCOMMERCE_API_KEY` (preferred shared key), or
+- `RW_MASTER_KEY`
 
-1. Rotate `RW_MASTER_KEY` on `license.reactwoo.com`.
-2. Set the new value as `REACTWOO_LICENSE_MASTER_KEY` on the storefront.
-3. Deploy API Manager 2.1.0+.
-4. Optionally rewrite Git history to remove the old secret after rotation.
+Set the storefront API Key to match one of those env values.

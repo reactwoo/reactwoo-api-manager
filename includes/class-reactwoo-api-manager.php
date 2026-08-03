@@ -59,7 +59,7 @@ class ReactWoo_API_Manager {
 		if ( is_admin() ) {
 			require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/class-admin.php';
 			ReactWoo_API_Manager_Admin::get_instance();
-			add_action( 'admin_notices', array( $this, 'maybe_notice_missing_master_key' ) );
+			add_action( 'admin_notices', array( $this, 'maybe_notice_missing_api_key' ) );
 		}
 
 		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
@@ -67,9 +67,9 @@ class ReactWoo_API_Manager {
 	}
 
 	/**
-	 * Warn admins when provisioning secret is missing.
+	 * Warn admins when the shared API key is missing.
 	 */
-	public function maybe_notice_missing_master_key() {
+	public function maybe_notice_missing_api_key() {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return;
 		}
@@ -77,9 +77,9 @@ class ReactWoo_API_Manager {
 			return;
 		}
 
-		echo '<div class="notice notice-error"><p>';
+		echo '<div class="notice notice-warning"><p>';
 		echo esc_html__(
-			'ReactWoo API Manager: define REACTWOO_LICENSE_MASTER_KEY in wp-config.php. Licence provisioning and subscription sync are disabled until it is set.',
+			'ReactWoo API Manager: set the shared API Key under ReactWoo License Manager → Settings so licence provisioning and sync can authenticate.',
 			'reactwoo-api-manager'
 		);
 		echo '</p></div>';
