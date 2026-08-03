@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ReactWoo API Manager
  * Description: Integrates WooCommerce Subscriptions with the ReactWoo License Server for secure license key generation and management.
- * Version: 2.1.4
+ * Version: 2.1.5
  * Author: ReactWoo
  * Author URI: https://reactwoo.com
  * License: GPL-3.0-or-later
@@ -19,7 +19,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // Define plugin constants
-define( 'REACTWOO_API_MANAGER_VERSION', '2.1.4' );
+define( 'REACTWOO_API_MANAGER_VERSION', '2.1.5' );
 define( 'REACTWOO_API_MANAGER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
@@ -28,7 +28,7 @@ define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );
  * Register My Account licence endpoint (used on init and activation).
  */
 function reactwoo_api_manager_register_license_endpoint() {
-	add_rewrite_endpoint( 'license', EP_PAGES );
+	add_rewrite_endpoint( 'license', EP_ROOT | EP_PAGES );
 }
 
 /**

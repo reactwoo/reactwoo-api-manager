@@ -19,6 +19,7 @@ class ReactWoo_License_Display {
 		add_action( 'wcs_view_subscription', array( $this, 'print_license_on_subscription_page' ), 15, 1 );
 		add_action( 'init', array( $this, 'register_license_endpoint' ) );
 		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
+		add_filter( 'woocommerce_get_query_vars', array( $this, 'register_wc_query_var' ) );
 		add_action( 'template_redirect', array( $this, 'log_account_request' ), 1 );
 		add_action( 'template_redirect', array( $this, 'maybe_redirect_account_root' ), 5 );
 		add_action( 'template_redirect', array( $this, 'maybe_handle_license_download' ) );
@@ -34,7 +35,7 @@ class ReactWoo_License_Display {
 	 * Register rewrite endpoint for license display.
 	 */
 	public function register_license_endpoint() {
-		add_rewrite_endpoint( 'license', EP_PAGES );
+		add_rewrite_endpoint( 'license', EP_ROOT | EP_PAGES );
 	}
 
 	/**
@@ -43,6 +44,20 @@ class ReactWoo_License_Display {
 	 */
 	public function register_query_vars( $vars ) {
 		$vars[] = 'reactwoo_license_download';
+		return $vars;
+	}
+
+	/**
+	 * Register with WooCommerce so is_wc_endpoint_url( 'license' ) works.
+	 *
+	 * Without this, theme/plugins that gate on is_wc_endpoint_url() treat
+	 * /my-account/license/ as the account root and can redirect forever.
+	 *
+	 * @param array $vars Woo query vars.
+	 * @return array
+	 */
+	public function register_wc_query_var( $vars ) {
+		$vars['license'] = 'license';
 		return $vars;
 	}
 
