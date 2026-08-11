@@ -1,0 +1,48 @@
+---
+description: ReactWoo platform architecture — one decision model; Core executes locally; Cloud authors/compiles
+alwaysApply: true
+---
+
+# REACTWOO PLATFORM ARCHITECTURE
+
+ReactWoo is a modular experience decision platform.
+
+**Source of truth:** `reactwoo-geocore/docs/architecture/` (Cloud v1 plan + work packages).
+
+## Non-negotiables
+
+- ReactWoo Core owns shared platform infrastructure.
+- Extension plugins contribute **capabilities** — they do not create independent decision engines.
+- Every new targeting input → Context/Condition capability.
+- Every executable behaviour → Action capability.
+- Every measurable success → Goal/Event capability.
+- **Cloud authors and compiles decisions. WordPress executes decisions locally.**
+- Never introduce a ReactWoo Cloud request into the visitor page-rendering critical path.
+- Standalone products must keep working without Cloud.
+- Cloud-managed sites use the same capability implementations as standalone sites.
+
+## Components & builders
+
+- ReactWoo Components use platform-neutral schemas.
+- Do not make universal components depend on Elementor or Gutenberg.
+- Elementor and Gutenberg are adapters/renderers around platform concepts.
+
+## Safety & compatibility
+
+- Every Experience must safely fall back to the website’s default content if a decision, component, reference, or manifest fails.
+- Do not silently break existing public APIs, stored configuration, or licence behaviour.
+- Prefer adapters and migration layers over destructive rewrites.
+- Customer-facing component output must be escaped, responsive, and accessible (WCAG 2.2 AA target).
+
+## Before a major change
+
+1. Identify the affected platform contract.
+2. Identify affected standalone plugins.
+3. Identify Cloud implications.
+4. Identify backwards compatibility.
+5. Add tests.
+6. Then implement.
+
+## Work package discipline
+
+Implement **one work package at a time** from `docs/architecture/work-packages.md`. Do not start Cloud portal/UI before contracts, capability registry, and local Decision Runtime exist.
