@@ -28,6 +28,9 @@
 			"path": "../reactwoo-geocore"
 		},
 		{
+			"path": "../reactwoo-decision-cloud"
+		},
+		{
 			"path": "../Reactwoo-linkedin-core"
 		},
 		{
@@ -53,9 +56,6 @@
 		},
 		{
 			"path": "../reactwoo-atomic-pro"
-		},
-		{
-			"path": "../../../../../../wooalisync/app/public/wp-content/plugins/atomic-elements"
 		}
 	],
 	"settings": {
