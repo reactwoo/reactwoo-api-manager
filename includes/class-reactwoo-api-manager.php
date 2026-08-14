@@ -58,6 +58,9 @@ class ReactWoo_API_Manager {
 		new ReactWoo_Account_REST_Controller();
 		new ReactWoo_Email_Delayed();
 
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/cloud-commerce/class-rwcc-bootstrap.php';
+		RWCC_Bootstrap::init();
+
 		if ( is_admin() ) {
 			require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/class-admin.php';
 			ReactWoo_API_Manager_Admin::get_instance();
