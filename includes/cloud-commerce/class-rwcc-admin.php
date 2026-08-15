@@ -16,8 +16,12 @@ class RWCC_Admin {
 	}
 
 	public function add_menu() {
+		$parent = 'reactwoo-license-manager';
+		if ( ! function_exists( 'add_submenu_page' ) ) {
+			return;
+		}
 		add_submenu_page(
-			'reactwoo-license-manager',
+			$parent,
 			__( 'Decision Cloud', 'reactwoo-api-manager' ),
 			__( 'Decision Cloud', 'reactwoo-api-manager' ),
 			'manage_woocommerce',

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ReactWoo API Manager
  * Description: Integrates WooCommerce Subscriptions with the ReactWoo License Server for secure license key generation and management.
- * Version: 2.1.6
+ * Version: 2.1.7
  * Author: ReactWoo
  * Author URI: https://reactwoo.com
  * License: GPL-3.0-or-later
@@ -19,7 +19,22 @@
 defined( 'ABSPATH' ) || exit;
 
 // Define plugin constants
-define( 'REACTWOO_API_MANAGER_VERSION', '2.1.6' );
+define( 'REACTWOO_API_MANAGER_VERSION', '2.1.7' );
+
+/**
+ * Stable companion capability check. Cloud Commerce Bridge may call this.
+ * Does not load Cloud PHP.
+ *
+ * @param string $feature Feature id, e.g. companion-v1.
+ * @return bool
+ */
+function reactwoo_api_manager_supports( $feature ) {
+	$feature = (string) $feature;
+	if ( $feature === 'companion-v1' ) {
+		return version_compare( REACTWOO_API_MANAGER_VERSION, '2.1.7', '>=' );
+	}
+	return false;
+}
 define( 'REACTWOO_API_MANAGER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'REACTWOO_API_MANAGER_PLUGIN_FILE', __FILE__ );

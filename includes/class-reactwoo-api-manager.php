@@ -58,8 +58,16 @@ class ReactWoo_API_Manager {
 		new ReactWoo_Account_REST_Controller();
 		new ReactWoo_Email_Delayed();
 
-		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/cloud-commerce/class-rwcc-bootstrap.php';
-		RWCC_Bootstrap::init();
+		/**
+		 * API Manager finished loading licence, download and My Account services.
+		 * The Cloud module may listen. Nothing Cloud-related is loaded unless the flag is on.
+		 */
+		do_action( 'reactwoo_api_manager_loaded' );
+
+		if ( defined( 'REACTWOO_CLOUD_BRIDGE_ENABLED' ) && REACTWOO_CLOUD_BRIDGE_ENABLED ) {
+			require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/cloud-commerce/class-rwcc-bootstrap.php';
+			RWCC_Bootstrap::init();
+		}
 
 		if ( is_admin() ) {
 			require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'admin/class-admin.php';

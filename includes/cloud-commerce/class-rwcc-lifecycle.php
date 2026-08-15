@@ -2,7 +2,7 @@
 /**
  * WooCommerce Subscriptions lifecycle → signed Cloud events + activation claims.
  *
- * @package ReactWoo_API_Manager
+ * @package ReactWoo_Cloud_Commerce_Bridge
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -59,23 +59,68 @@ class RWCC_Lifecycle {
 	}
 
 	/**
-	 * Register WooCommerce Subscriptions hooks.
+	 * Register Cloud-only WooCommerce hooks and API Manager observe-only listeners.
 	 */
 	public function register() {
+		$this->register_cloud_only_hooks();
+		$this->register_api_manager_listeners();
+	}
+
+	/**
+	 * Surfaces API Manager does not own. Mapped products only at runtime.
+	 */
+	public function register_cloud_only_hooks() {
 		add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'capture_handoff_on_order' ), 20, 1 );
 		add_action( 'woocommerce_store_api_checkout_update_order_meta', array( $this, 'capture_handoff_on_order' ), 20, 1 );
-		add_action( 'woocommerce_order_status_completed', array( $this, 'on_order_completed' ), 20, 1 );
-		add_action( 'woocommerce_order_status_processing', array( $this, 'on_order_completed' ), 20, 1 );
-		add_action( 'woocommerce_subscription_status_active', array( $this, 'on_subscription_active' ), 20, 1 );
-		add_action( 'woocommerce_subscription_renewal_payment_complete', array( $this, 'on_renewal' ), 20, 2 );
-		add_action( 'woocommerce_subscription_payment_failed', array( $this, 'on_payment_failed' ), 20, 1 );
-		add_action( 'woocommerce_subscription_status_on-hold', array( $this, 'on_payment_failed' ), 20, 1 );
-		add_action( 'woocommerce_subscription_status_cancelled', array( $this, 'on_cancelled' ), 20, 1 );
-		add_action( 'woocommerce_subscription_status_expired', array( $this, 'on_expired' ), 20, 1 );
-		add_action( 'woocommerce_subscription_status_updated', array( $this, 'on_status_updated' ), 20, 3 );
 		add_action( 'woocommerce_subscriptions_switch_completed', array( $this, 'on_switch_completed' ), 20, 1 );
 		add_action( 'woocommerce_order_refunded', array( $this, 'on_refunded' ), 20, 2 );
 		add_action( 'template_redirect', array( $this, 'intercept_handoff_query' ), 5 );
+	}
+
+	/**
+	 * Consume API Manager licence actions. Do not re-hook the same WooCommerce events.
+	 */
+	public function register_api_manager_listeners() {
+		add_action( 'reactwoo_license_generated', array( $this, 'on_license_generated' ), 10, 3 );
+		add_action( 'reactwoo_license_renewed', array( $this, 'on_renewal' ), 10, 2 );
+		add_action( 'reactwoo_license_payment_failed', array( $this, 'on_payment_failed' ), 10, 1 );
+		add_action( 'reactwoo_license_status_synced', array( $this, 'on_license_status_synced' ), 10, 3 );
+	}
+
+	/**
+	 * Cloud activate after API Manager stored a licence key.
+	 *
+	 * @param object      $subscription Subscription.
+	 * @param object|null $order        Parent order.
+	 * @param array       $license      Licence payload (unused).
+	 */
+	public function on_license_generated( $subscription, $order = null, $license = array() ) {
+		unset( $license );
+		return $this->activate( $subscription, $order );
+	}
+
+	/**
+	 * Map API Manager status sync onto Cloud events. Skip active (activation
+	 * already ran) and on-hold (payment_failed already ran).
+	 *
+	 * @param object $subscription Subscription.
+	 * @param string $old_status   Previous status.
+	 * @param string $new_status   New status.
+	 */
+	public function on_license_status_synced( $subscription, $old_status, $new_status ) {
+		unset( $old_status );
+		$new_status = strtolower( (string) $new_status );
+		if ( $new_status === 'cancelled' || $new_status === 'canceled' ) {
+			$this->on_cancelled( $subscription );
+			return;
+		}
+		if ( $new_status === 'expired' ) {
+			$this->on_expired( $subscription );
+			return;
+		}
+		if ( $new_status === 'pending-cancel' ) {
+			$this->emit( 'cancellation', $subscription, null, array( 'status' => 'pending-cancel' ) );
+		}
 	}
 
 	/**

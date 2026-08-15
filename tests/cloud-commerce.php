@@ -152,6 +152,14 @@ rw_assert( $plans->plan_for_product_id( 303 ) === 'scale', 'Product 303 maps to 
 rw_assert( $plans->plan_for_product_id( 909 ) === 'growth', 'Variation 909 maps to growth' );
 rw_assert( $plans->plan_for_product_id( 999 ) === '', 'Unmapped product has no plan' );
 
+$standalone = new RWCC_Test_Subscription();
+$standalone->id    = 77;
+$standalone->items = array( new RWCC_Test_Item( 999 ) );
+$standalone_order  = new RWCC_Test_Order();
+$standalone_order->items = $standalone->items;
+$skipped = $lifecycle->on_license_generated( $standalone, $standalone_order, array( 'license_key' => 'RW-TEST' ) );
+rw_assert( empty( $skipped['ok'] ) && $skipped['error'] === 'not_cloud_product', 'Unmapped standalone purchase stays off the Cloud path' );
+
 $order = new RWCC_Test_Order();
 $order->items = array( new RWCC_Test_Item( 202 ) );
 $sub = new RWCC_Test_Subscription();
@@ -367,7 +375,13 @@ rw_assert( ! isset( $snapshot['consumer_key'] ), 'Reconcile snapshot has no WooC
 $src = file_get_contents( $dir . 'class-rwcc-webhooks.php' ) . file_get_contents( $dir . 'class-rwcc-rest.php' );
 rw_assert( strpos( $src, 'consumer_key' ) === false, 'Bridge source does not embed WooCommerce REST consumer keys' );
 $life_src = file_get_contents( $dir . 'class-rwcc-lifecycle.php' );
-rw_assert( strpos( $life_src, 'woocommerce_subscription_status_active' ) !== false, 'Hooks WooCommerce Subscriptions activation' );
-rw_assert( strpos( $life_src, 'woocommerce_subscription_renewal_payment_complete' ) !== false, 'Hooks renewal' );
+rw_assert( strpos( $life_src, "add_action( 'reactwoo_license_generated'" ) !== false, 'Consumes API Manager licence generated' );
+rw_assert( strpos( $life_src, "add_action( 'reactwoo_license_renewed'" ) !== false, 'Consumes API Manager renewal' );
+rw_assert( strpos( $life_src, "add_action( 'reactwoo_license_payment_failed'" ) !== false, 'Consumes API Manager payment failure' );
+rw_assert( strpos( $life_src, "add_action( 'reactwoo_license_status_synced'" ) !== false, 'Consumes API Manager status sync' );
+rw_assert( strpos( $life_src, "add_action( 'woocommerce_subscription_status_active'" ) === false, 'Does not re-hook WooCommerce subscription activation' );
+rw_assert( strpos( $life_src, "add_action( 'woocommerce_order_status_completed'" ) === false, 'Does not re-hook order completed' );
+rw_assert( strpos( $life_src, "add_action( 'woocommerce_subscription_renewal_payment_complete'" ) === false, 'Does not re-hook WooCommerce renewal' );
+rw_assert( strpos( $life_src, "add_action( 'woocommerce_subscription_payment_failed'" ) === false, 'Does not re-hook WooCommerce payment failure' );
 rw_assert( strpos( $life_src, 'woocommerce_subscriptions_switch_completed' ) !== false, 'Hooks plan switch' );
 rw_assert( strpos( $life_src, 'get_current_blog_id' ) !== false, 'Provisioning is blog-scoped for multisite' );

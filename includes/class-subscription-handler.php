@@ -130,6 +130,15 @@ class ReactWoo_Subscription_Handler {
         // Sync subscription state to license server v1 endpoint (it will map to license statuses)
         $current_period_end = $subscription->get_date( 'end' );
         $api->sync_subscription_v1( $subscription->get_id(), $new_status, $current_period_end );
+
+        /**
+         * Observe-only. Cloud bridge must not replace this sync.
+         *
+         * @param WC_Subscription $subscription Subscription.
+         * @param string          $old_status   Previous status.
+         * @param string          $new_status   New status.
+         */
+        do_action( 'reactwoo_license_status_synced', $subscription, $old_status, $new_status );
     }
 
     /**
@@ -233,6 +242,14 @@ class ReactWoo_Subscription_Handler {
         $subscription->add_meta_data( '_reactwoo_last_renewal_price', $subscription_price, true );
         $subscription->add_meta_data( '_reactwoo_last_renewal_currency', $currency, true );
         $subscription->save();
+
+        /**
+         * Observe-only. Cloud bridge must not replace renewal licence handling.
+         *
+         * @param WC_Subscription $subscription  Subscription.
+         * @param WC_Order        $renewal_order Renewal order.
+         */
+        do_action( 'reactwoo_license_renewed', $subscription, $renewal_order );
         
         // TODO: If license server has an update endpoint for pricing, call it here
         // $api->update_license_pricing( $license_id, $pricing_data );
@@ -258,6 +275,13 @@ class ReactWoo_Subscription_Handler {
         // Log the payment failure
         $subscription->add_meta_data( '_reactwoo_payment_failure_date', current_time( 'mysql' ), true );
         $subscription->save();
+
+        /**
+         * Observe-only. Cloud bridge must not replace payment-failure licence handling.
+         *
+         * @param WC_Subscription $subscription Subscription.
+         */
+        do_action( 'reactwoo_license_payment_failed', $subscription );
     }
 
     /**
@@ -551,6 +575,15 @@ class ReactWoo_Subscription_Handler {
         }
         
         $subscription->save();
+
+        /**
+         * Observe-only after a licence key is stored. Cloud bridge must not generate keys.
+         *
+         * @param WC_Subscription $subscription Subscription.
+         * @param WC_Order        $order        Parent order.
+         * @param array           $license      Licence server payload.
+         */
+        do_action( 'reactwoo_license_generated', $subscription, $order, $license );
 
         // Also store in order meta for easy reference
         $order->update_meta_data( '_reactwoo_license_key', $license['license_key'] );

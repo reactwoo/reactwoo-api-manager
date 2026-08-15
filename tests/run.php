@@ -94,6 +94,9 @@ rw_assert( strpos( $display_src, 'maybe_handle_plugin_download' ) !== false, 'Pl
 rw_assert( strpos( $display_src, 'inject_plugin_downloads' ) !== false, 'Woo Downloads injection registered' );
 rw_assert( file_exists( dirname( __DIR__ ) . '/includes/class-account-logger.php' ), 'Account logger class exists' );
 
+require_once __DIR__ . '/isolation.php';
+require_once __DIR__ . '/licensing-regression.php';
+require_once __DIR__ . '/companion-deactivated.php';
 require_once __DIR__ . '/cloud-commerce.php';
 
 if ( $failures > 0 ) {
