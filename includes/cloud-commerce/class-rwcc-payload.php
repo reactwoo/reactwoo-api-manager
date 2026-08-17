@@ -73,6 +73,8 @@ class RWCC_Payload {
 			array( 'key' => 'rw_cloud_provisioning_id', 'value' => (string) ( $input['provisioning_id'] ?? '' ) ),
 			array( 'key' => 'rw_cloud_identity_user', 'value' => (string) ( $input['identity_user'] ?? '' ) ),
 			array( 'key' => 'rw_cloud_identity_email', 'value' => (string) ( $input['identity_email'] ?? '' ) ),
+			array( 'key' => 'rw_cloud_identity_subject', 'value' => (string) ( $input['identity_subject'] ?? '' ) ),
+			array( 'key' => 'rw_cloud_identity_issuer', 'value' => (string) ( $input['identity_issuer'] ?? RWCC_Identity::ISSUER ) ),
 			array( 'key' => 'rw_cloud_claim_hash', 'value' => (string) ( $input['claim_hash'] ?? '' ) ),
 			array( 'key' => 'rw_cloud_claim_expires', 'value' => (string) ( $input['claim_expires'] ?? '' ) ),
 		);

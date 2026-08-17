@@ -119,6 +119,8 @@ class RWCC_Claims {
 			'org_id'           => $org_id,
 			'identity_user'    => (int) ( $context['identity_user'] ?? 0 ),
 			'identity_email'   => (string) ( $context['identity_email'] ?? '' ),
+			'identity_subject' => (string) ( $context['identity_subject'] ?? '' ),
+			'identity_issuer'  => RWCC_Identity::ISSUER,
 			'provisioning_id'  => $provisioning_id,
 			'created_at'       => $now,
 			'expires_at'       => $now + $this->ttl,

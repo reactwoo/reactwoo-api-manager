@@ -42,6 +42,11 @@ class RWCC_Lifecycle {
 	private $urls;
 
 	/**
+	 * @var RWCC_Identity_Client|null
+	 */
+	private $identity_client;
+
+	/**
 	 * @param RWCC_Settings   $settings Settings.
 	 * @param RWCC_Plan_Map   $plans    Plan map.
 	 * @param RWCC_Order_Meta $meta     Meta helper.
@@ -56,6 +61,13 @@ class RWCC_Lifecycle {
 		$this->claims   = $claims;
 		$this->webhooks = $webhooks;
 		$this->urls     = $urls;
+	}
+
+	/**
+	 * @param RWCC_Identity_Client $client Identity client.
+	 */
+	public function set_identity_client( RWCC_Identity_Client $client ) {
+		$this->identity_client = $client;
 	}
 
 	/**
@@ -330,12 +342,13 @@ class RWCC_Lifecycle {
 			$order,
 			$subscription,
 			array(
-				'org_id'          => $org,
-				'plan'            => $line['plan'],
-				'product_id'      => $line['product_id'],
-				'identity_user'   => $customer_id,
-				'identity_email'  => $identity_email,
-				'blog_id'         => $this->blog_id(),
+				'org_id'            => $org,
+				'plan'              => $line['plan'],
+				'product_id'        => $line['product_id'],
+				'identity_user'     => $customer_id,
+				'identity_email'    => $identity_email,
+				'identity_subject'  => RWCC_Identity::subject_for_user( $customer_id ),
+				'blog_id'           => $this->blog_id(),
 			)
 		);
 
@@ -348,6 +361,7 @@ class RWCC_Lifecycle {
 				'org_id'              => $org,
 				'identity_user'       => $customer_id,
 				'identity_email'      => $identity_email,
+				'identity_subject'    => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_SUBJECT ),
 				'provisioning_id'     => $applied[ RWCC_Order_Meta::META_PROVISIONING ],
 				'blog_id'             => $this->blog_id(),
 				'already_provisioned' => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PROVISIONED ) === '1',
@@ -375,6 +389,25 @@ class RWCC_Lifecycle {
 			);
 			if ( function_exists( 'do_action' ) ) {
 				do_action( 'rwcc_claim_issued', $issued, $subscription, $activation_url );
+			}
+			if ( $this->identity_client ) {
+				$this->identity_client->register_claim(
+					RWCC_Identity::registration_body(
+						array(
+							'purpose'         => 'activation',
+							'subject'         => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_SUBJECT ),
+							'hash'            => $issued['hash'],
+							'email'           => $identity_email,
+							'organisation_id' => $org,
+							'intended_role'   => 'owner',
+							'customer_id'     => (string) $customer_id,
+							'order_id'        => (string) $order_id,
+							'subscription_id' => (string) ( method_exists( $subscription, 'get_id' ) ? $subscription->get_id() : 0 ),
+							'secret'          => (string) $this->settings->get( 'handoff_secret' ),
+							'ttl'             => (int) $this->settings->get( 'claim_ttl_sec' ),
+						)
+					)
+				);
 			}
 		}
 
@@ -439,6 +472,8 @@ class RWCC_Lifecycle {
 				'provisioning_id'       => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PROVISIONING ),
 				'identity_user'         => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_USER ),
 				'identity_email'        => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_EMAIL ),
+				'identity_subject'      => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_SUBJECT ),
+				'identity_issuer'       => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_IDENTITY_ISSUER ),
 				'claim_hash'            => isset( $overrides['claim_hash'] ) ? $overrides['claim_hash'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_CLAIM_HASH ),
 				'claim_expires'         => isset( $overrides['claim_expires'] ) ? $overrides['claim_expires'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_CLAIM_EXPIRES ),
 				'next_payment_date_gmt' => $next,

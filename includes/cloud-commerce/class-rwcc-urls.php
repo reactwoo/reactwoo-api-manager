@@ -117,11 +117,12 @@ class RWCC_Urls {
 		if ( $path[0] !== '/' ) {
 			$path = '/' . $path;
 		}
-		$url = $origin . $path . '?claim=' . rawurlencode( (string) $token );
+		$url = $origin . $path;
 		$safe = $this->sanitize( $return_url );
 		if ( $safe !== '' ) {
-			$url .= '&return=' . rawurlencode( $safe );
+			$url .= '?return=' . rawurlencode( $safe );
 		}
+		$url .= '#claim=' . rawurlencode( (string) $token );
 		return $url;
 	}
 }

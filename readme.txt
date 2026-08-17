@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.7
+Stable tag: 2.1.9
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,12 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.9 =
+* Decision Cloud identity: immutable ReactWoo subject UUID, signed activation/login claims, and My Account Open Decision Cloud. Licensing and downloads are unchanged.
+
+= 2.1.8 =
+* Cloud commerce default origin is `https://decision.reactwoo.com`. The module still loads only when `REACTWOO_CLOUD_BRIDGE_ENABLED` is true.
 
 = 2.1.7 =
 * Observe-only companion contract: `reactwoo_api_manager_supports( 'companion-v1' )` and licence lifecycle actions. No Cloud PHP is loaded.

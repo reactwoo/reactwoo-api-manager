@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $dir = dirname( __DIR__ ) . '/includes/cloud-commerce/';
 require_once $dir . 'class-rwcc-crypto.php';
+require_once $dir . 'class-rwcc-identity.php';
+require_once $dir . 'class-rwcc-identity-client.php';
 require_once $dir . 'class-rwcc-settings.php';
 require_once $dir . 'class-rwcc-plan-map.php';
 require_once $dir . 'class-rwcc-urls.php';
@@ -171,17 +173,23 @@ $activation = $lifecycle->activate( $sub, $order );
 rw_assert( ! empty( $activation['ok'] ), 'Activation succeeds for Cloud product' );
 rw_assert( ! empty( $activation['claim']['token'] ), 'Activation issues a plaintext claim once' );
 rw_assert( $activation['claim']['token'] !== $activation['claim']['hash'], 'Claim is stored hashed, not plaintext' );
-rw_assert( strpos( $activation['activation_url'], 'https://cloud.reactwoo.com/activate?claim=' ) === 0, 'Activation URL points at Decision Cloud' );
+rw_assert( strpos( $activation['activation_url'], 'https://cloud.reactwoo.com/activate#claim=' ) === 0, 'Activation URL points at Decision Cloud with a fragment token' );
+rw_assert( strpos( $activation['activation_url'], '?claim=' ) === false, 'Raw claim is not placed in the query string' );
 rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_plan' ) === 'growth', 'Subscription stamped with rw_cloud_plan' );
 rw_assert( RWCC_Order_Meta::get( $order, 'rw_cloud_plan' ) === 'growth', 'Order stamped with rw_cloud_plan' );
 rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_provisioning_id' ) !== '', 'Provisioning id stamped' );
 rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_identity_email' ) === 'paul@reactwoo.com', 'Existing ReactWoo identity email attached' );
 rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_identity_user' ) === '12', 'Existing ReactWoo user id attached' );
+rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_identity_issuer' ) === 'https://reactwoo.com', 'Identity issuer is ReactWoo.com' );
+$subject = RWCC_Order_Meta::get( $sub, 'rw_cloud_identity_subject' );
+rw_assert( $subject !== '' && $subject !== '12', 'Stable identity subject is not the email or numeric user id' );
+rw_assert( RWCC_Identity::subject_for_user( 12 ) === $subject, 'Identity subject is generated once and reused' );
 $activation_payload = json_decode( $activation['webhook']['raw'], true );
 $claim_meta = array();
 foreach ( $activation_payload['meta_data'] as $row ) {
 	$claim_meta[ $row['key'] ] = $row['value'];
 }
+rw_assert( $claim_meta['rw_cloud_identity_subject'] === $subject, 'Webhook payload includes the identity subject' );
 rw_assert( $claim_meta['rw_cloud_claim_hash'] === $activation['claim']['hash'], 'Webhook payload includes the claim hash' );
 rw_assert( $claim_meta['rw_cloud_claim_expires'] !== '', 'Webhook payload includes claim expiry' );
 rw_assert( RWCC_Order_Meta::get( $sub, 'rw_cloud_org' ) === 'org_from_cloud', 'Successful Cloud webhook stamps the organisation id' );
@@ -385,3 +393,34 @@ rw_assert( strpos( $life_src, "add_action( 'woocommerce_subscription_renewal_pay
 rw_assert( strpos( $life_src, "add_action( 'woocommerce_subscription_payment_failed'" ) === false, 'Does not re-hook WooCommerce payment failure' );
 rw_assert( strpos( $life_src, 'woocommerce_subscriptions_switch_completed' ) !== false, 'Hooks plan switch' );
 rw_assert( strpos( $life_src, 'get_current_blog_id' ) !== false, 'Provisioning is blog-scoped for multisite' );
+
+$identity_posts = array();
+$identity_client = new RWCC_Identity_Client(
+	$settings,
+	function ( $url, $raw, $headers ) use ( &$identity_posts ) {
+		$identity_posts[] = array( 'url' => $url, 'raw' => $raw, 'headers' => $headers );
+		return array( 'ok' => true, 'status' => 201, 'body' => '{"ok":true}' );
+	}
+);
+$login = $identity_client->issue_login( 12, 'paul@reactwoo.com', 'org_from_cloud' );
+rw_assert( ! empty( $login['ok'] ), 'Returning login issues a signed Cloud claim' );
+rw_assert( strpos( $login['url'], '#claim=' ) !== false, 'Login URL keeps the raw token in the fragment' );
+rw_assert( count( $identity_posts ) === 1, 'Login claim is registered server-to-server' );
+$login_body = json_decode( $identity_posts[0]['raw'], true );
+rw_assert( $login_body['purpose'] === 'login', 'Login claim purpose is login' );
+rw_assert( $login_body['issuer'] === 'https://reactwoo.com', 'Login claim issuer is ReactWoo.com' );
+rw_assert( $login_body['subject'] === $subject, 'Login claim uses the same identity subject' );
+rw_assert( empty( $login_body['token'] ), 'Raw login token is not sent to Cloud registration' );
+rw_assert( $login_body['hash'] !== $login['token'], 'Cloud registration stores only the hash' );
+
+$account_src = file_get_contents( $dir . 'class-rwcc-account.php' );
+rw_assert( strpos( $account_src, 'Open Decision Cloud' ) !== false, 'My Account offers Open Decision Cloud without replacing licence UI' );
+$license_ui = dirname( __DIR__ ) . '/includes';
+rw_assert( is_dir( $license_ui ), 'Existing API Manager licence includes remain in place' );
+
+if ( $failures > 0 ) {
+	echo "\n{$failures} assertion(s) failed\n";
+	exit( 1 );
+}
+echo "\nAll ReactWoo Commerce Bridge tests passed\n";
+

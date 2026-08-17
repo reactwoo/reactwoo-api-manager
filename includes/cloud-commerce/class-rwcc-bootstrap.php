@@ -33,6 +33,8 @@ class RWCC_Bootstrap {
 		}
 		$dir = __DIR__ . '/';
 		require_once $dir . 'class-rwcc-crypto.php';
+		require_once $dir . 'class-rwcc-identity.php';
+		require_once $dir . 'class-rwcc-identity-client.php';
 		require_once $dir . 'class-rwcc-settings.php';
 		require_once $dir . 'class-rwcc-plan-map.php';
 		require_once $dir . 'class-rwcc-urls.php';
@@ -65,6 +67,8 @@ class RWCC_Bootstrap {
 		$meta     = new RWCC_Order_Meta( $plans );
 		$lifecycle = new RWCC_Lifecycle( $settings, $plans, $meta, $claims, $webhooks, $urls );
 		$handoff   = new RWCC_Handoff( $settings, $urls, $plans );
+		$identity_client = new RWCC_Identity_Client( $settings );
+		$lifecycle->set_identity_client( $identity_client );
 
 		$this->lifecycle = $lifecycle;
 		$lifecycle->register();
@@ -75,9 +79,10 @@ class RWCC_Bootstrap {
 		$fields = new RWCC_Product_Fields();
 		$fields->register();
 
-		$account = new RWCC_Account( $lifecycle );
+		$account = new RWCC_Account( $lifecycle, $identity_client );
 		$account->register();
 		add_action( 'template_redirect', array( $account, 'maybe_redirect_activation' ), 6 );
+		add_action( 'template_redirect', array( $account, 'maybe_redirect_open_cloud' ), 7 );
 		add_filter( 'allowed_redirect_hosts', array( $this, 'allow_cloud_host' ) );
 
 		if ( is_admin() ) {

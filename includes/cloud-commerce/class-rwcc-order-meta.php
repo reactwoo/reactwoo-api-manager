@@ -14,8 +14,10 @@ class RWCC_Order_Meta {
 	const META_ORG             = 'rw_cloud_org';
 	const META_PLAN            = 'rw_cloud_plan';
 	const META_PROVISIONING    = 'rw_cloud_provisioning_id';
-	const META_IDENTITY_USER   = 'rw_cloud_identity_user';
-	const META_IDENTITY_EMAIL  = 'rw_cloud_identity_email';
+	const META_IDENTITY_USER    = 'rw_cloud_identity_user';
+	const META_IDENTITY_EMAIL   = 'rw_cloud_identity_email';
+	const META_IDENTITY_SUBJECT = 'rw_cloud_identity_subject';
+	const META_IDENTITY_ISSUER  = 'rw_cloud_identity_issuer';
 	const META_CLAIM_HASH      = 'rw_cloud_claim_hash';
 	const META_CLAIM_EXPIRES   = 'rw_cloud_claim_expires';
 	const META_CLAIM_USED      = 'rw_cloud_claim_used';
@@ -130,14 +132,20 @@ class RWCC_Order_Meta {
 		if ( $identity_email === '' && is_object( $order ) && method_exists( $order, 'get_billing_email' ) ) {
 			$identity_email = (string) $order->get_billing_email();
 		}
+		$identity_subject = isset( $context['identity_subject'] ) ? (string) $context['identity_subject'] : '';
+		if ( $identity_subject === '' && $identity_user ) {
+			$identity_subject = RWCC_Identity::subject_for_user( $identity_user );
+		}
 
 		$meta = array(
-			self::META_ORG            => isset( $context['org_id'] ) ? (string) $context['org_id'] : '',
-			self::META_PLAN           => RWCC_Plan_Map::normalize_plan( $context['plan'] ?? '' ),
-			self::META_PROVISIONING   => $provisioning_id,
-			self::META_IDENTITY_USER  => $identity_user ? (string) $identity_user : '',
-			self::META_IDENTITY_EMAIL => $identity_email,
-			self::META_PRODUCT        => isset( $context['product_id'] ) ? (string) $context['product_id'] : '',
+			self::META_ORG              => isset( $context['org_id'] ) ? (string) $context['org_id'] : '',
+			self::META_PLAN             => RWCC_Plan_Map::normalize_plan( $context['plan'] ?? '' ),
+			self::META_PROVISIONING     => $provisioning_id,
+			self::META_IDENTITY_USER    => $identity_user ? (string) $identity_user : '',
+			self::META_IDENTITY_EMAIL   => $identity_email,
+			self::META_IDENTITY_SUBJECT => $identity_subject,
+			self::META_IDENTITY_ISSUER  => RWCC_Identity::issuer(),
+			self::META_PRODUCT          => isset( $context['product_id'] ) ? (string) $context['product_id'] : '',
 		);
 
 		self::stamp( $order, $meta );

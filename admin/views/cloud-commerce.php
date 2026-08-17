@@ -28,13 +28,13 @@ $notice = isset( $notice ) ? $notice : '';
 				<th scope="row"><label for="cloud_origin"><?php esc_html_e( 'Decision Cloud origin', 'reactwoo-api-manager' ); ?></label></th>
 				<td>
 					<input type="url" class="regular-text" id="cloud_origin" name="cloud_origin" value="<?php echo esc_attr( $values['cloud_origin'] ?? '' ); ?>" />
-					<p class="description"><?php esc_html_e( 'Example: https://cloud.reactwoo.com — used for activation URLs and the default webhook target.', 'reactwoo-api-manager' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Example: https://decision.reactwoo.com — used for activation URLs and the default webhook target.', 'reactwoo-api-manager' ); ?></p>
 				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="webhook_url"><?php esc_html_e( 'Webhook URL', 'reactwoo-api-manager' ); ?></label></th>
 				<td>
-					<input type="url" class="regular-text" id="webhook_url" name="webhook_url" value="<?php echo esc_attr( $values['webhook_url'] ?? '' ); ?>" placeholder="https://cloud.reactwoo.com/api/v1/billing/webhooks/woocommerce" />
+					<input type="url" class="regular-text" id="webhook_url" name="webhook_url" value="<?php echo esc_attr( $values['webhook_url'] ?? '' ); ?>" placeholder="https://decision.reactwoo.com/api/v1/billing/webhooks/woocommerce" />
 					<p class="description"><?php esc_html_e( 'Leave blank to use {origin}/api/v1/billing/webhooks/woocommerce.', 'reactwoo-api-manager' ); ?></p>
 				</td>
 			</tr>
@@ -61,7 +61,7 @@ $notice = isset( $notice ) ? $notice : '';
 				<th scope="row"><label for="return_origins"><?php esc_html_e( 'Allowed return URL origins', 'reactwoo-api-manager' ); ?></label></th>
 				<td>
 					<textarea class="large-text" rows="4" id="return_origins" name="return_origins"><?php echo esc_textarea( $values['return_origins'] ?? '' ); ?></textarea>
-					<p class="description"><?php esc_html_e( 'One origin per line (https://cloud.reactwoo.com). Arbitrary return URLs are rejected.', 'reactwoo-api-manager' ); ?></p>
+					<p class="description"><?php esc_html_e( 'One origin per line (https://decision.reactwoo.com). Arbitrary return URLs are rejected.', 'reactwoo-api-manager' ); ?></p>
 				</td>
 			</tr>
 			<tr>

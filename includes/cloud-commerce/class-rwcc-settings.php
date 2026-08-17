@@ -32,14 +32,14 @@ class RWCC_Settings {
 	 */
 	public static function defaults() {
 		return array(
-			'cloud_origin'        => 'https://cloud.reactwoo.com',
+			'cloud_origin'        => 'https://decision.reactwoo.com',
 			'webhook_url'         => '',
 			'webhook_secret'      => '',
 			'handoff_secret'      => '',
 			'reconcile_token'     => '',
 			'claim_ttl_sec'       => 1800,
 			'replay_window_sec'   => 300,
-			'return_origins'      => "https://cloud.reactwoo.com\nhttps://reactwoo.com",
+			'return_origins'      => "https://decision.reactwoo.com\nhttps://reactwoo.com",
 			'product_starter'     => '',
 			'product_growth'      => '',
 			'product_scale'       => '',

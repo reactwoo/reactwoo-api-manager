@@ -18,10 +18,17 @@ class RWCC_Account {
 	private $lifecycle;
 
 	/**
-	 * @param RWCC_Lifecycle $lifecycle Lifecycle.
+	 * @var RWCC_Identity_Client|null
 	 */
-	public function __construct( RWCC_Lifecycle $lifecycle ) {
+	private $identity;
+
+	/**
+	 * @param RWCC_Lifecycle            $lifecycle Lifecycle.
+	 * @param RWCC_Identity_Client|null $identity  Login handoff client.
+	 */
+	public function __construct( RWCC_Lifecycle $lifecycle, $identity = null ) {
 		$this->lifecycle = $lifecycle;
+		$this->identity  = $identity;
 	}
 
 	public function register() {
@@ -74,14 +81,17 @@ class RWCC_Account {
 		$url = wp_nonce_url(
 			add_query_arg(
 				array(
-					'rwcc_activate'     => 1,
-					'subscription_id'   => method_exists( $subscription, 'get_id' ) ? (int) $subscription->get_id() : 0,
+					'rwcc_open_cloud' => 1,
+					'subscription_id' => method_exists( $subscription, 'get_id' ) ? (int) $subscription->get_id() : 0,
 				),
 				wc_get_account_endpoint_url( 'dashboard' )
 			),
-			'rwcc_activate'
+			'rwcc_open_cloud'
 		);
-		echo '<p><a class="button" href="' . esc_url( $url ) . '">' . esc_html__( 'Continue to Decision Cloud', 'reactwoo-api-manager' ) . '</a></p>';
+		$label = $used
+			? __( 'Open Decision Cloud', 'reactwoo-api-manager' )
+			: __( 'Continue to Decision Cloud', 'reactwoo-api-manager' );
+		echo '<p><a class="button" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a></p>';
 		echo '<p class="description">' . esc_html__( 'Purchased securely on ReactWoo.com', 'reactwoo-api-manager' ) . '</p>';
 		echo '</div>';
 	}
@@ -108,6 +118,49 @@ class RWCC_Account {
 		$result = $this->lifecycle->activate( $subscription, $order );
 		if ( ! empty( $result['activation_url'] ) ) {
 			wp_safe_redirect( $result['activation_url'] );
+			exit;
+		}
+	}
+
+	/**
+	 * Returning login: WordPress session → signed login claim → Cloud fragment URL.
+	 * WooCommerce webhooks never establish a browser session.
+	 */
+	public function maybe_redirect_open_cloud() {
+		if ( empty( $_GET['rwcc_open_cloud'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+		if ( ! is_user_logged_in() ) {
+			return;
+		}
+		if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'rwcc_open_cloud' ) ) {
+			return;
+		}
+		$subscription_id = isset( $_GET['subscription_id'] ) ? absint( $_GET['subscription_id'] ) : 0;
+		$org_id          = '';
+		if ( $subscription_id && function_exists( 'wcs_get_subscription' ) ) {
+			$subscription = wcs_get_subscription( $subscription_id );
+			if ( $subscription && (int) $subscription->get_customer_id() === (int) get_current_user_id() ) {
+				$used = RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_CLAIM_USED );
+				if ( ! $used ) {
+					$order  = method_exists( $subscription, 'get_parent' ) ? $subscription->get_parent() : null;
+					$result = $this->lifecycle->activate( $subscription, $order );
+					if ( ! empty( $result['activation_url'] ) ) {
+						wp_safe_redirect( $result['activation_url'] );
+						exit;
+					}
+				}
+				$org_id = RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_ORG );
+			}
+		}
+		if ( ! $this->identity ) {
+			return;
+		}
+		$user   = function_exists( 'wp_get_current_user' ) ? wp_get_current_user() : null;
+		$email  = $user && isset( $user->user_email ) ? (string) $user->user_email : '';
+		$issued = $this->identity->issue_login( get_current_user_id(), $email, $org_id );
+		if ( ! empty( $issued['url'] ) ) {
+			wp_safe_redirect( $issued['url'] );
 			exit;
 		}
 	}
