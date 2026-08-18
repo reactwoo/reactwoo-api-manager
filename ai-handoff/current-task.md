@@ -1,6 +1,6 @@
 # Current task — Decision Cloud identity handoff (Store side)
 
-Planner spec (2026-08-17): ReactWoo.com is the identity source. Commerce Bridge issues signed activation and returning-login claims. Do not replace licensing, downloads, or My Account licence UI.
+Planner spec (2026-08-18): ReactWoo.com is the identity source. Commerce Bridge issues signed activation and returning-login claims. Do not replace licensing, downloads, or My Account licence UI.
 
 ## Ownership
 
@@ -14,7 +14,8 @@ Decision Cloud owns Cloud users, organisations, sessions, and tenant authorisati
 - Issuer `https://reactwoo.com`
 - Server-to-server `POST /api/v1/identity/claims` (hash only)
 - Activation URL fragment `#claim=`
-- My Account “Open Decision Cloud” login handoff
+- My Account dashboard “Open Decision Cloud” for any signed-in ReactWoo account (2.1.10)
+- Login claims do not send a membership role
 
 ## Do not
 

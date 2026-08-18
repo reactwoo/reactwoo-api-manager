@@ -32,8 +32,33 @@ class RWCC_Account {
 	}
 
 	public function register() {
+		add_action( 'woocommerce_account_dashboard', array( $this, 'render_open_cloud' ), 14 );
 		add_action( 'woocommerce_account_dashboard', array( $this, 'render' ), 15 );
 		add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'render_for_subscription' ), 20, 1 );
+	}
+
+	/**
+	 * Returning login does not require a Cloud subscription.
+	 * Membership on Cloud decides which workspaces open.
+	 */
+	public function render_open_cloud() {
+		if ( ! is_user_logged_in() || ! function_exists( 'wc_get_account_endpoint_url' ) ) {
+			return;
+		}
+		$url = wp_nonce_url(
+			add_query_arg(
+				array(
+					'rwcc_open_cloud' => 1,
+				),
+				wc_get_account_endpoint_url( 'dashboard' )
+			),
+			'rwcc_open_cloud'
+		);
+		echo '<div class="rwcc-cloud-open" style="margin:16px 0;padding:16px;border:1px solid #dcdcde;border-radius:8px;">';
+		echo '<h3>' . esc_html__( 'Decision Cloud', 'reactwoo-api-manager' ) . '</h3>';
+		echo '<p>' . esc_html__( 'Open your authorised Decision Cloud workspace from this ReactWoo account. No extra Cloud password is required.', 'reactwoo-api-manager' ) . '</p>';
+		echo '<p><a class="button" href="' . esc_url( $url ) . '">' . esc_html__( 'Open Decision Cloud', 'reactwoo-api-manager' ) . '</a></p>';
+		echo '</div>';
 	}
 
 	public function render() {

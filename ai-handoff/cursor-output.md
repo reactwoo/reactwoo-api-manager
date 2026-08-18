@@ -1,12 +1,14 @@
 # Cursor output — Store identity / activation handoff
 
 **Status:** needs-review  
-**Date:** 2026-08-17  
-**Production authentication complete:** no (Cloud still needs deploy, Aplenty backfill, token rotation)
+**Date:** 2026-08-18  
+**Production authentication complete:** no (Cloud 0.17.1 and Store 2.1.10 are local; Aplenty backfill and token rotation remain)
 
 ## Confirmed root cause (Cloud; this repo supplies identity)
 
 Decision Cloud treated `PORTAL_API_TOKEN` as a global admin secret and created “My organisation” from empty browser storage. The Store already owned WooCommerce identity and the Commerce Bridge. This pass adds a stable issuer/subject and signed claim registration without replacing licences.
+
+2.1.10: Open Decision Cloud is offered on the My Account dashboard without requiring a Cloud subscription. Login claims no longer send `intended_role: member`, which could have demoted an owner after backfill.
 
 ## Repositories inspected
 
@@ -45,22 +47,19 @@ Not owned here. Cloud tenant middleware authorises memberships.
 
 Owned by Decision Cloud `scripts/backfill_owner.js`. Store must supply the verified identity UUID from the ReactWoo.com user record. Do not infer ownership from email.
 
-## Files changed
+## Files changed (this pass)
 
-- Added: `includes/cloud-commerce/class-rwcc-identity.php`, `class-rwcc-identity-client.php`
-- Modified: bootstrap, account, claims, lifecycle, order-meta, payload, settings, urls, `tests/cloud-commerce.php`
-- Isolation/docs/readme/admin view may already be in the working tree from prior Cloud companion work
+- `includes/cloud-commerce/class-rwcc-account.php` — dashboard Open Decision Cloud without a subscription
+- `includes/cloud-commerce/class-rwcc-identity-client.php` — login claims omit membership role
+- `woocommerce-api-subscription-bridge.php`, `readme.txt`, `docs/cloud-isolation-and-rollback.md` — 2.1.10
+- `tests/cloud-commerce.php` — dashboard CTA assertion
 
 ## Tests added / extended
 
 `tests/cloud-commerce.php`:
 
-- Identity subject is not email or numeric user id; generated once and reused
-- Activation URL uses fragment, not query
-- Webhook payload includes identity subject
-- Returning login registers hash-only signed claim
-- My Account offers Open Decision Cloud without replacing licence UI
-- Existing API Manager licence includes remain in place
+- Returning login is offered on the dashboard without requiring a Cloud subscription
+- Existing identity subject, fragment URL, hash-only registration, licence UI unchanged
 
 ## Commands run
 
@@ -95,7 +94,7 @@ Cloud identity is additive. Isolation tests confirm Cloud classes are not loaded
 
 ## Remaining work
 
-1. Deploy API Manager (authorised separately).
+1. Deploy API Manager 2.1.10 to reactwoo.com (authorised separately; SSH origin previously denied).
 2. Confirm production user meta `_rw_cloud_identity_subject` for the Aplenty owner.
-3. Verify “Open Decision Cloud” against deployed Cloud.
+3. Verify “Open Decision Cloud” against deployed Cloud 0.17.1.
 4. Team invitations: not implemented. Next task. Do not add a parallel membership system here.

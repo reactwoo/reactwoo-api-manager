@@ -81,7 +81,7 @@ class RWCC_Identity_Client {
 				'hash'             => $hash,
 				'email'            => $email,
 				'organisation_id'  => $org_id,
-				'intended_role'    => 'member',
+				'intended_role'    => '',
 				'customer_id'      => (string) $user_id,
 				'secret'           => $secret,
 				'ttl'              => (int) $this->settings->get( 'claim_ttl_sec' ),

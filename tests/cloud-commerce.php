@@ -415,6 +415,7 @@ rw_assert( $login_body['hash'] !== $login['token'], 'Cloud registration stores o
 
 $account_src = file_get_contents( $dir . 'class-rwcc-account.php' );
 rw_assert( strpos( $account_src, 'Open Decision Cloud' ) !== false, 'My Account offers Open Decision Cloud without replacing licence UI' );
+rw_assert( strpos( $account_src, 'render_open_cloud' ) !== false, 'Returning login is offered on the dashboard without requiring a Cloud subscription' );
 $license_ui = dirname( __DIR__ ) . '/includes';
 rw_assert( is_dir( $license_ui ), 'Existing API Manager licence includes remain in place' );
 
