@@ -5,7 +5,7 @@
 | Item | Value |
 |------|--------|
 | Plugin | ReactWoo API Manager |
-| Version constant | `REACTWOO_API_MANAGER_VERSION` **2.1.10** |
+| Version constant | `REACTWOO_API_MANAGER_VERSION` **2.1.11** |
 | Cloud module | `includes/cloud-commerce/` (in-plugin, flag-gated) |
 | Deployment remote | `origin` = `ssh://reactwoo@reactwoo.com/home/reactwoo/public_html/wp-content/plugins/reactwoo-api-manager` |
 | Backup remote | `github` = `https://github.com/reactwoo/reactwoo-api-manager.git` |
