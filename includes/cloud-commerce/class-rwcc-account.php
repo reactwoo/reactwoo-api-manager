@@ -39,6 +39,7 @@ class RWCC_Account {
 		add_action( 'woocommerce_subscription_details_after_order_table', array( $this, 'render_for_subscription' ), 20, 1 );
 		add_filter( 'woocommerce_login_redirect', array( $this, 'redirect_after_store_login' ), 20, 2 );
 		add_filter( 'login_redirect', array( $this, 'redirect_after_wp_login' ), 20, 3 );
+		add_action( 'template_redirect', array( $this, 'maybe_save_downgrade' ), 8 );
 	}
 
 	/**
@@ -85,6 +86,12 @@ class RWCC_Account {
 		if ( ! is_object( $subscription ) ) {
 			return;
 		}
+		if ( class_exists( 'RWCC_Supersession' ) && RWCC_Supersession::is_superseded( $subscription ) ) {
+			echo '<div class="rwcc-cloud-included" style="margin:16px 0;padding:16px;border:1px solid #dcdcde;border-radius:8px;">';
+			echo '<p>' . esc_html__( 'Included in your Decision Cloud subscription', 'reactwoo-api-manager' ) . '</p>';
+			echo '</div>';
+			return;
+		}
 		$plan = RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PLAN );
 		if ( $plan === '' ) {
 			return;
@@ -123,6 +130,102 @@ class RWCC_Account {
 		echo '<p><a class="button" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a></p>';
 		echo '<p class="description">' . esc_html__( 'Purchased securely on ReactWoo.com', 'reactwoo-api-manager' ) . '</p>';
 		echo '</div>';
+		$this->render_downgrade( $subscription, $plan );
+	}
+
+	/**
+	 * @param object $subscription Cloud subscription.
+	 * @param string $plan         Internal plan.
+	 */
+	public function render_downgrade( $subscription, $plan ) {
+		$settings = RWCC_Settings::from_wordpress();
+		$end      = '';
+		if ( method_exists( $subscription, 'get_date' ) ) {
+			$end = (string) $subscription->get_date( 'next_payment' );
+			if ( $end === '' ) {
+				$end = (string) $subscription->get_date( 'end' );
+			}
+		}
+		$status  = method_exists( $subscription, 'get_status' ) ? $subscription->get_status() : '';
+		$context = RWCC_Downgrade::context_for_status( $status );
+		$quote   = RWCC_Downgrade::quote( $plan, array(), $end, $settings, null, false );
+		$existing = method_exists( $subscription, 'get_meta' ) ? $subscription->get_meta( RWCC_Downgrade::META_KEY, true ) : array();
+		if ( is_array( $existing ) && ! empty( $existing['state'] ) && $existing['state'] !== RWCC_Downgrade::STATE_CANCELLED ) {
+			$context['headline'] = sprintf(
+				/* translators: 1: state, 2: date */
+				__( 'Saved downgrade: %1$s, effective %2$s. You can replace this selection.', 'reactwoo-api-manager' ),
+				(string) $existing['state'],
+				isset( $existing['effective_at'] ) ? (string) $existing['effective_at'] : $end
+			);
+		}
+		$action = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'subscriptions' ) : '';
+		if ( $action === '' && function_exists( 'get_permalink' ) ) {
+			$action = get_permalink();
+		}
+		$id = method_exists( $subscription, 'get_id' ) ? (int) $subscription->get_id() : 0;
+		echo RWCC_Downgrade::form_html( $quote, $context, $action, $id ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	public function maybe_save_downgrade() {
+		if ( empty( $_POST['rwcc_downgrade_save'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			return;
+		}
+		if ( ! is_user_logged_in() || ! function_exists( 'wp_verify_nonce' ) ) {
+			return;
+		}
+		$nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+		if ( ! wp_verify_nonce( $nonce, 'rwcc_downgrade' ) ) {
+			return;
+		}
+		$subscription_id = isset( $_POST['subscription_id'] ) ? absint( $_POST['subscription_id'] ) : 0;
+		if ( ! $subscription_id || ! function_exists( 'wcs_get_subscription' ) ) {
+			return;
+		}
+		$subscription = wcs_get_subscription( $subscription_id );
+		if ( ! $subscription || (int) $subscription->get_customer_id() !== (int) get_current_user_id() ) {
+			return;
+		}
+		$plan = RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PLAN );
+		if ( $plan === '' ) {
+			return;
+		}
+		$settings = RWCC_Settings::from_wordpress();
+		$end      = method_exists( $subscription, 'get_date' ) ? (string) $subscription->get_date( 'next_payment' ) : '';
+		$none     = ! empty( $_POST['rwcc_keep_none'] );
+		$keep     = array();
+		if ( isset( $_POST['rwcc_keep'] ) && is_array( $_POST['rwcc_keep'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			foreach ( wp_unslash( $_POST['rwcc_keep'] ) as $slug ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				$keep[] = sanitize_key( $slug );
+			}
+		}
+		$quote   = RWCC_Downgrade::quote( $plan, $keep, $end, $settings, null, $none );
+		$confirm = ! empty( $_POST['rwcc_downgrade_confirm'] );
+		$result  = RWCC_Downgrade::confirm( $quote, $confirm, (string) $subscription_id );
+		if ( empty( $result['ok'] ) ) {
+			if ( function_exists( 'wc_add_notice' ) ) {
+				wc_add_notice(
+					isset( $result['error'] ) && $result['error'] === 'selection_required'
+						? __( 'Choose plugins to keep, or explicitly continue with no paid plugins.', 'reactwoo-api-manager' )
+						: __( 'Confirm the downgrade selection before saving.', 'reactwoo-api-manager' ),
+					'error'
+				);
+			}
+			return;
+		}
+		$payload = $result['payload'];
+		if ( class_exists( 'RWCC_Scheduled_Subscription' ) ) {
+			$payload = RWCC_Scheduled_Subscription::materialize(
+				$payload,
+				array(
+					'customer_id'           => (int) get_current_user_id(),
+					'cloud_subscription_id' => (string) $subscription_id,
+				)
+			);
+		}
+		RWCC_Downgrade::persist( $subscription, $payload );
+		if ( function_exists( 'wc_add_notice' ) ) {
+			wc_add_notice( __( 'Downgrade selection saved. Individual plugins are not charged until Decision Cloud ends.', 'reactwoo-api-manager' ), 'success' );
+		}
 	}
 
 	public function maybe_redirect_activation() {

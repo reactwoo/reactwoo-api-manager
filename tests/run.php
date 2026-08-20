@@ -80,6 +80,8 @@ rw_assert( strpos( $svc_src, 'get_licenses_by_domain' ) === false, 'Account serv
 $dl_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-plugin-download-service.php' );
 rw_assert( strpos( $dl_src, 'store-download' ) !== false, 'Plugin download service calls store-download' );
 rw_assert( strpos( $dl_src, '_reactwoo_plugin_slug' ) !== false, 'Resolves product plugin slug meta' );
+rw_assert( strpos( $dl_src, 'build_synthetic_files' ) !== false, 'Cloud plans can emit one download per entitled plugin' );
+rw_assert( strpos( $dl_src, '_downloadable_files' ) === false, 'Download service does not write variation ZIP attachments' );
 rw_assert( in_array( 'active', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Active subscriptions are entitled' );
 rw_assert( in_array( 'pending-cancel', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Pending-cancel subscriptions are entitled' );
 rw_assert( ! in_array( 'cancelled', ReactWoo_Plugin_Download_Service::entitled_statuses(), true ), 'Cancelled subscriptions are not entitled' );

@@ -19,6 +19,7 @@ class RWCC_Handoff {
 		'invoices',
 		'payment-method',
 		'cancel',
+		'downgrade',
 	);
 
 	/**
@@ -63,7 +64,8 @@ class RWCC_Handoff {
 		}
 
 		$org  = isset( $query['rw_cloud_org'] ) ? (string) $query['rw_cloud_org'] : '';
-		$plan = RWCC_Plan_Map::normalize_plan( isset( $query['rw_cloud_plan'] ) ? $query['rw_cloud_plan'] : '' );
+		$plan_raw = isset( $query['rw_cloud_plan'] ) ? (string) $query['rw_cloud_plan'] : '';
+		$plan = RWCC_Plan_Map::normalize_plan( $plan_raw );
 		$exp  = isset( $query['rw_exp'] ) ? (int) $query['rw_exp'] : 0;
 		$ret  = isset( $query['rw_return'] ) ? (string) $query['rw_return'] : '';
 		$sig  = isset( $query['rw_sig'] ) ? (string) $query['rw_sig'] : '';
@@ -72,27 +74,43 @@ class RWCC_Handoff {
 			return array( 'ok' => false, 'error' => 'handoff_expired' );
 		}
 
+		$product_id = '';
+		if ( isset( $query['add-to-cart'] ) ) {
+			$product_id = preg_replace( '/[^0-9]/', '', (string) $query['add-to-cart'] );
+		}
+
 		$secret = (string) $this->settings->get( 'handoff_secret' );
 		$params = array(
-			'action' => $action,
-			'org'    => $org,
-			'plan'   => $plan,
-			'exp'    => $exp ? (string) $exp : '',
-			'return' => $ret,
+			'action'  => $action,
+			'org'     => $org,
+			'plan'    => $plan_raw,
+			'exp'     => $exp ? (string) $exp : '',
+			'return'  => $ret,
+			'product' => $product_id,
 		);
 
 		if ( $secret === '' || ! RWCC_Crypto::verify_handoff( $params, $sig, $secret ) ) {
-			return array( 'ok' => false, 'error' => 'invalid_signature' );
+			// Legacy signatures used the normalised plan id.
+			$params['plan'] = $plan;
+			if ( $secret === '' || ! RWCC_Crypto::verify_handoff( $params, $sig, $secret ) ) {
+				return array( 'ok' => false, 'error' => 'invalid_signature' );
+			}
 		}
 
 		if ( $ret !== '' && ! $this->urls->is_allowed( $ret ) ) {
 			return array( 'ok' => false, 'error' => 'invalid_return_url' );
 		}
 
-		$product_id = '';
-		if ( isset( $query['add-to-cart'] ) ) {
-			$product_id = preg_replace( '/[^0-9]/', '', (string) $query['add-to-cart'] );
+		if ( $product_id !== '' && in_array( $action, array( 'checkout', 'upgrade' ), true ) ) {
+			$mapped = $this->plans->plan_for_product_id( $product_id );
+			if ( $plan && $mapped && $mapped !== $plan ) {
+				return array( 'ok' => false, 'error' => 'plan_product_mismatch' );
+			}
+			if ( $plan && $mapped === '' ) {
+				return array( 'ok' => false, 'error' => 'plan_product_mismatch' );
+			}
 		}
+
 		if ( $product_id === '' && $plan ) {
 			$product_id = $this->plans->product_id_for_plan( $plan );
 		}
@@ -147,6 +165,11 @@ class RWCC_Handoff {
 
 		if ( $action === 'subscription' && ! empty( $context['subscription_url'] ) ) {
 			return (string) $context['subscription_url'];
+		}
+
+		if ( $action === 'cancel' || $action === 'downgrade' ) {
+			$base = ! empty( $context['subscription_url'] ) ? (string) $context['subscription_url'] : $this->absolute( $home, isset( $context['account'] ) ? (string) $context['account'] : '/my-account/' );
+			return $this->add_query( $base, 'rwcc_downgrade', '1' );
 		}
 
 		$path = isset( $context['account'] ) ? (string) $context['account'] : '/my-account/';

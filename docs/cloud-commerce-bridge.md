@@ -19,3 +19,33 @@ Decision Cloud sign-in is a browser bounce, not a password REST call:
 3. If already logged in, the store registers a hashed login claim and redirects to Cloud with `#claim=`.
 
 Cloud never receives the ReactWoo.com password. The My Account dashboard button still uses a WordPress nonce; Cloud cannot mint that nonce, so the query flag without `_wpnonce` is the SSO start.
+
+## Catalogue (single variable subscription)
+
+Inspected production product (2026-08-19): parent **3166**, variations **3172–3177** (Starter/Growth/Scale × monthly/annual). Bind comma-separated IDs in Decision Cloud commerce settings. Set `_rw_cloud_plan`, `_rw_cloud_billing_cycle`, and `_rw_cloud_product_type=decision_cloud` on variations. Do not attach satellite plugin ZIPs to variations; My Account uses `ReactWoo_Plugin_Download_Service::build_synthetic_files()` so each entitled plugin appears as `Name — Included with Decision Cloud`.
+
+Local ReactWoo (after the 2026-08-19 production restore) can be bound with `php scripts/bind_local_cloud_catalogue.php`. That writes Local prices/meta/settings only. Validate without writing: `php scripts/validate_cloud_catalogue.php`.
+
+## Upgrade credit at checkout
+
+When `REACTWOO_CLOUD_BRIDGE_ENABLED` is on, `RWCC_Checkout_Credit` shows the upgrade summary before confirm: included plugins, renewals that will stop, separately billed products, and remaining-term credit. Covered individuals with unexplained missing period/amount data **block** full-price Cloud checkout. Eligible credit is applied as an interim non-taxable negative cart fee (`Upgrade credit`) until PLAN.md §20 picks a final mechanic. Audit is stored on the order as `_rwcc_upgrade_credit` / `_rwcc_upgrade_credit_audit`.
+
+## Downgrade selection
+
+Cloud subscription details in My Account include **Cancel or downgrade Decision Cloud**. The customer must confirm. They can keep Geo Core Pro, Geo Commerce, Geo Optimise (any combination), or **no paid plugins**. The store records `_rwcc_downgrade` with start = Cloud paid-through date and `charge_now=false`. Reactivating Cloud cancels that schedule. Signed handoffs `rw_action=cancel` and `rw_action=downgrade` land on this form.
+
+## Overlap correction
+
+**WooCommerce → Decision Cloud → Cloud overlap** looks up a Cloud subscription ID. If covered individuals are still renewing (state 6), an operator can confirm and stop those renewals. History is kept. Remaining-term amounts are quoted for finance (`refund: false`). Refunds are not automatic.
+
+## Scheduled individual subscriptions
+
+Confirmed downgrade selections are materialized as **pending** WooCommerce Subscriptions with `start_date` = Cloud paid-through (`RWCC_Scheduled_Subscription`). Nothing is charged at confirm time. Cloud reactivation cancels those pending individuals. Tests inject a creator so the module does not require live WCS.
+
+## Entitlement handover
+
+`RWCC_Entitlement_Handover` keeps Cloud downloads on the Cloud subscription while Cloud is live (including a scheduled downgrade). After Cloud ends, selected individuals or free Geo Core apply. Activation failure keeps standalone access. Local configuration is never wiped.
+
+## Licence reuse
+
+`RWCC_Licence_Reuse` does not treat a Cloud key as an individual plugin key. After Cloud ends, a historical individual key for the same slug may be reused only if that plugin was selected.

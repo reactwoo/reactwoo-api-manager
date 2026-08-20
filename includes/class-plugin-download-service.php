@@ -112,23 +112,58 @@ class ReactWoo_Plugin_Download_Service {
 	}
 
 	/**
+	 * Entitled plugin slugs for a subscription.
+	 * Cloud plans expand to covered SKUs; standalone stays a single product slug.
+	 *
+	 * @param object $subscription Subscription-like object.
+	 * @return string[]
+	 */
+	public static function entitled_plugin_slugs( $subscription ) {
+		$plan = '';
+		if ( is_object( $subscription ) && method_exists( $subscription, 'get_meta' ) && class_exists( 'RWCC_Order_Meta' ) && class_exists( 'RWCC_Plan_Map' ) ) {
+			$plan = RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
+		}
+		if ( $plan && class_exists( 'RWCC_Coverage' ) ) {
+			return RWCC_Coverage::covered_skus( $plan );
+		}
+		$slug = self::get_plugin_slug_for_subscription( $subscription );
+		return $slug !== '' ? array( $slug ) : array();
+	}
+
+	/**
 	 * Build nonce-protected proxy URL for My Account.
 	 *
-	 * @param int $subscription_id Subscription ID.
+	 * @param int    $subscription_id Subscription ID.
+	 * @param string $slug            Optional plugin slug for Cloud bundles.
 	 * @return string
 	 */
-	public static function get_proxy_url( $subscription_id ) {
+	public static function get_proxy_url( $subscription_id, $slug = '' ) {
 		$subscription_id = absint( $subscription_id );
 		if ( ! $subscription_id ) {
 			return '';
 		}
-		return add_query_arg(
-			array(
-				self::QUERY_VAR => $subscription_id,
-				'_wpnonce'      => wp_create_nonce( self::QUERY_VAR . '_' . $subscription_id ),
-			),
-			home_url( '/' )
+		$slug = strtolower( trim( (string) $slug ) );
+		$args = array(
+			self::QUERY_VAR => $subscription_id,
+			'_wpnonce'      => wp_create_nonce( self::download_nonce_action( $subscription_id, $slug ) ),
 		);
+		if ( $slug !== '' ) {
+			$args['plugin'] = $slug;
+		}
+		return add_query_arg( $args, home_url( '/' ) );
+	}
+
+	/**
+	 * @param int    $subscription_id Subscription ID.
+	 * @param string $slug            Optional plugin slug.
+	 * @return string
+	 */
+	public static function download_nonce_action( $subscription_id, $slug = '' ) {
+		$subscription_id = absint( $subscription_id );
+		$slug            = strtolower( trim( (string) $slug ) );
+		return $slug !== ''
+			? self::QUERY_VAR . '_' . $subscription_id . '_' . $slug
+			: self::QUERY_VAR . '_' . $subscription_id;
 	}
 
 	/**
@@ -227,42 +262,74 @@ class ReactWoo_Plugin_Download_Service {
 	}
 
 	/**
-	 * Synthetic file row for an entitled subscription.
+	 * Synthetic file rows for an entitled subscription.
+	 * Cloud plans emit one row per included plugin; standalone remains a single ZIP.
+	 *
+	 * @param object $subscription Subscription.
+	 * @return array<int,array<string,string>>
+	 */
+	public static function build_synthetic_files( $subscription ) {
+		if ( ! self::subscription_can_download( $subscription ) ) {
+			return array();
+		}
+		if ( self::get_store_download_token() === '' ) {
+			return array();
+		}
+
+		$plan = '';
+		if ( is_object( $subscription ) && method_exists( $subscription, 'get_meta' ) && class_exists( 'RWCC_Order_Meta' ) && class_exists( 'RWCC_Plan_Map' ) ) {
+			$plan = RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
+		}
+
+		$rows = array();
+		if ( $plan && class_exists( 'RWCC_Coverage' ) ) {
+			$rows = RWCC_Coverage::download_rows( $plan );
+		} else {
+			$slug = self::get_plugin_slug_for_subscription( $subscription );
+			if ( $slug !== '' ) {
+				$version = self::get_cached_version( $slug );
+				$rows[]  = array(
+					'slug'   => $slug,
+					'label'  => $slug,
+					'name'   => $version
+						? sprintf( /* translators: %s: version */ __( 'Plugin ZIP v%s', 'reactwoo-api-manager' ), $version )
+						: __( 'Plugin ZIP', 'reactwoo-api-manager' ),
+					'source' => 'standalone',
+				);
+			}
+		}
+
+		$files = array();
+		foreach ( $rows as $row ) {
+			$slug = isset( $row['slug'] ) ? (string) $row['slug'] : '';
+			$url  = self::get_proxy_url( (int) $subscription->get_id(), $plan ? $slug : '' );
+			if ( $slug === '' || $url === '' ) {
+				continue;
+			}
+			$version = self::get_cached_version( $slug );
+			$name    = isset( $row['name'] ) ? (string) $row['name'] : $slug;
+			$files[] = array(
+				'name'      => $name,
+				'url'       => $url,
+				'remaining' => '',
+				'expires'   => '',
+				'slug'      => $slug,
+				'source'    => isset( $row['source'] ) ? (string) $row['source'] : 'reactwoo_store_download',
+				'version'   => $version,
+			);
+		}
+
+		return $files;
+	}
+
+	/**
+	 * Synthetic file row for an entitled subscription (first entitled plugin).
 	 *
 	 * @param WC_Subscription $subscription Subscription.
 	 * @return array<string, string>|null
 	 */
 	public static function build_synthetic_file( $subscription ) {
-		if ( ! self::subscription_can_download( $subscription ) ) {
-			return null;
-		}
-		if ( self::get_store_download_token() === '' ) {
-			return null;
-		}
-
-		$slug = self::get_plugin_slug_for_subscription( $subscription );
-		if ( $slug === '' ) {
-			return null;
-		}
-
-		$url = self::get_proxy_url( (int) $subscription->get_id() );
-		if ( $url === '' ) {
-			return null;
-		}
-
-		$version = self::get_cached_version( $slug );
-		$name    = $version
-			? sprintf( /* translators: %s: version */ __( 'Plugin ZIP v%s', 'reactwoo-api-manager' ), $version )
-			: __( 'Plugin ZIP', 'reactwoo-api-manager' );
-
-		return array(
-			'name'      => $name,
-			'url'       => $url,
-			'remaining' => '',
-			'expires'   => '',
-			'slug'      => $slug,
-			'source'    => 'reactwoo_store_download',
-			'version'   => $version,
-		);
+		$files = self::build_synthetic_files( $subscription );
+		return $files ? $files[0] : null;
 	}
 }

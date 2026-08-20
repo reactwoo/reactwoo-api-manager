@@ -23,6 +23,8 @@ class RWCC_Order_Meta {
 	const META_CLAIM_USED      = 'rw_cloud_claim_used';
 	const META_PROVISIONED     = 'rw_cloud_provisioned';
 	const META_PRODUCT         = '_reactwoo_cloud_product_id';
+	const META_BILLING_CYCLE   = 'rw_cloud_billing_cycle';
+	const META_DOWNGRADE       = '_rwcc_downgrade';
 
 	/**
 	 * @var RWCC_Plan_Map
@@ -43,7 +45,7 @@ class RWCC_Order_Meta {
 	 * @return array{plan:string,product_id:int,variation_id:int}
 	 */
 	public function qualifying_line( $order ) {
-		$empty = array( 'plan' => '', 'product_id' => 0, 'variation_id' => 0 );
+		$empty = array( 'plan' => '', 'product_id' => 0, 'variation_id' => 0, 'billing_cycle' => '' );
 		if ( ! is_object( $order ) || ! method_exists( $order, 'get_items' ) ) {
 			return $empty;
 		}
@@ -59,10 +61,12 @@ class RWCC_Order_Meta {
 			}
 			$plan = $this->plans->resolve( $product_id, $variation_id, array( 'RWCC_Plan_Map', 'wp_meta_reader' ) );
 			if ( $plan ) {
+				$cycle = $this->plans->resolve_billing_cycle( $product_id, $variation_id, array( 'RWCC_Plan_Map', 'wp_meta_reader' ) );
 				return array(
-					'plan'         => $plan,
-					'product_id'   => $product_id,
-					'variation_id' => $variation_id,
+					'plan'          => $plan,
+					'product_id'    => $product_id,
+					'variation_id'  => $variation_id,
+					'billing_cycle' => $cycle,
 				);
 			}
 		}
@@ -146,6 +150,7 @@ class RWCC_Order_Meta {
 			self::META_IDENTITY_SUBJECT => $identity_subject,
 			self::META_IDENTITY_ISSUER  => RWCC_Identity::issuer(),
 			self::META_PRODUCT          => isset( $context['product_id'] ) ? (string) $context['product_id'] : '',
+			self::META_BILLING_CYCLE    => RWCC_Plan_Map::normalize_billing_cycle( $context['billing_cycle'] ?? '' ),
 		);
 
 		self::stamp( $order, $meta );

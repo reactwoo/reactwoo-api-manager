@@ -251,22 +251,10 @@ class ReactWoo_Customer_Account_Service {
 
 		$files = $this->match_downloads( $downloads, $product_id, $order_id );
 
-		// Prefer store-gated R2 latest ZIP when product has a plugin slug and subscription is entitled.
 		if ( class_exists( 'ReactWoo_Plugin_Download_Service' ) ) {
-			$has_store_file = false;
-			foreach ( $files as $file ) {
-				$url = isset( $file['url'] ) ? (string) $file['url'] : '';
-				if ( ( isset( $file['source'] ) && 'reactwoo_store_download' === $file['source'] )
-					|| false !== strpos( $url, ReactWoo_Plugin_Download_Service::QUERY_VAR ) ) {
-					$has_store_file = true;
-					break;
-				}
-			}
-			if ( ! $has_store_file ) {
-				$synthetic = ReactWoo_Plugin_Download_Service::build_synthetic_file( $subscription );
-				if ( is_array( $synthetic ) && ! empty( $synthetic['url'] ) ) {
-					$files = array_merge( array( $synthetic ), $files );
-				}
+			$synthetics = ReactWoo_Plugin_Download_Service::build_synthetic_files( $subscription );
+			if ( $synthetics ) {
+				$files = array_merge( $synthetics, $files );
 			}
 		}
 

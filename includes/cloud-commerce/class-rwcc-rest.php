@@ -46,7 +46,7 @@ class RWCC_REST {
 	}
 
 	public function register_routes() {
-		$actions = array( 'checkout', 'upgrade', 'subscription', 'invoices', 'payment-method', 'account' );
+		$actions = array( 'checkout', 'upgrade', 'subscription', 'invoices', 'payment-method', 'account', 'cancel', 'downgrade' );
 		register_rest_route(
 			self::NS,
 			'/handoff/(?P<action>' . implode( '|', $actions ) . ')',
@@ -84,7 +84,9 @@ class RWCC_REST {
 	 */
 	public function handle_handoff( $request ) {
 		$params = $request->get_params();
-		$params['rw_action'] = isset( $params['action'] ) ? $params['action'] : '';
+		if ( empty( $params['rw_action'] ) && ! empty( $params['action'] ) ) {
+			$params['rw_action'] = $params['action'];
+		}
 		$verified = $this->handoff->verify_request( $params );
 		if ( empty( $verified['ok'] ) ) {
 			$code = isset( $verified['error'] ) ? $verified['error'] : 'invalid_handoff';
@@ -99,7 +101,7 @@ class RWCC_REST {
 			'orders'   => function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'orders' ) : '/my-account/orders/',
 		);
 
-		if ( $verified['action'] === 'subscription' && ! empty( $verified['org'] ) && function_exists( 'wcs_get_subscriptions' ) ) {
+		if ( in_array( $verified['action'], array( 'subscription', 'cancel', 'downgrade' ), true ) && ! empty( $verified['org'] ) && function_exists( 'wcs_get_subscriptions' ) ) {
 			$subs = wcs_get_subscriptions(
 				array(
 					'subscription_status' => 'any',

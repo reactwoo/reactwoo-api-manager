@@ -12,7 +12,8 @@
 
 ## Open
 
-- Production `origin` (reactwoo.com) was not updated: SSH `Permission denied`. 2.1.11 is local only.
-- Team invitations are not issued from My Account. Cloud accepts purpose `invite`. Next task.
-- Production deploy and Aplenty owner UUID confirmation are blocked on operator action.
+- Production SSH `origin` still `Permission denied`. **2.1.11** is on GitHub (`v2.1.11`) and in `reactwoo-api-manager-2.1.11.zip`. Confirm wp-admin Version if the Cloud bounce does not run.
+- Identity UUID for WP user 13 **exists** (`_rw_cloud_identity_subject`). Do not use user id `13` as Cloud `--subject`.
+- Team invitations are not issued from My Account. Cloud accepts purpose `invite`.
 - `php tests/licensing-regression.php` is not a standalone file; run `php tests/run.php`.
+- Canonical cutover plan: Decision Cloud `docs/identity-production-cutover.md`.

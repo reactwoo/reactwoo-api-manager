@@ -65,20 +65,46 @@ $notice = isset( $notice ) ? $notice : '';
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><?php esc_html_e( 'Product ID fallbacks', 'reactwoo-api-manager' ); ?></th>
+				<th scope="row"><?php esc_html_e( 'Decision Cloud catalogue', 'reactwoo-api-manager' ); ?></th>
 				<td>
 					<p>
-						<label><?php esc_html_e( 'Starter', 'reactwoo-api-manager' ); ?>
-							<input type="text" name="product_starter" value="<?php echo esc_attr( $values['product_starter'] ?? '' ); ?>" />
-						</label>
-						<label><?php esc_html_e( 'Growth', 'reactwoo-api-manager' ); ?>
-							<input type="text" name="product_growth" value="<?php echo esc_attr( $values['product_growth'] ?? '' ); ?>" />
-						</label>
-						<label><?php esc_html_e( 'Scale', 'reactwoo-api-manager' ); ?>
-							<input type="text" name="product_scale" value="<?php echo esc_attr( $values['product_scale'] ?? '' ); ?>" />
+						<label><?php esc_html_e( 'Parent product ID', 'reactwoo-api-manager' ); ?>
+							<input type="text" name="product_decision_cloud" value="<?php echo esc_attr( $values['product_decision_cloud'] ?? '' ); ?>" />
 						</label>
 					</p>
-					<p class="description"><?php esc_html_e( 'Used when a product has no _rw_cloud_plan meta. Prefer setting the plan on the product or variation.', 'reactwoo-api-manager' ); ?></p>
+					<p>
+						<label><?php esc_html_e( 'Starter variation IDs', 'reactwoo-api-manager' ); ?>
+							<input type="text" class="regular-text" name="product_starter" value="<?php echo esc_attr( $values['product_starter'] ?? '' ); ?>" placeholder="3172,3173" />
+						</label>
+					</p>
+					<p>
+						<label><?php esc_html_e( 'Growth variation IDs', 'reactwoo-api-manager' ); ?>
+							<input type="text" class="regular-text" name="product_growth" value="<?php echo esc_attr( $values['product_growth'] ?? '' ); ?>" placeholder="3174,3175" />
+						</label>
+					</p>
+					<p>
+						<label><?php esc_html_e( 'Scale variation IDs', 'reactwoo-api-manager' ); ?>
+							<input type="text" class="regular-text" name="product_scale" value="<?php echo esc_attr( $values['product_scale'] ?? '' ); ?>" placeholder="3176,3177" />
+						</label>
+					</p>
+					<p class="description"><?php esc_html_e( 'One variable subscription: ReactWoo Decision Cloud. Bind variation IDs, not the parent, as a comma-separated list (monthly then annual). Prefer _rw_cloud_plan and _rw_cloud_billing_cycle on each variation. Do not attach satellite plugin ZIPs to variations.', 'reactwoo-api-manager' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Individual plugin product IDs', 'reactwoo-api-manager' ); ?></th>
+				<td>
+					<p>
+						<label><?php esc_html_e( 'Geo Core Pro', 'reactwoo-api-manager' ); ?>
+							<input type="text" name="product_geocore_pro" value="<?php echo esc_attr( $values['product_geocore_pro'] ?? '' ); ?>" />
+						</label>
+						<label><?php esc_html_e( 'Geo Commerce', 'reactwoo-api-manager' ); ?>
+							<input type="text" name="product_geo_commerce" value="<?php echo esc_attr( $values['product_geo_commerce'] ?? '' ); ?>" />
+						</label>
+						<label><?php esc_html_e( 'Geo Optimise', 'reactwoo-api-manager' ); ?>
+							<input type="text" name="product_geo_optimise" value="<?php echo esc_attr( $values['product_geo_optimise'] ?? '' ); ?>" />
+						</label>
+					</p>
+					<p class="description"><?php esc_html_e( 'Used to detect covered individual subscriptions during Cloud upgrade. Leave blank until the live WooCommerce IDs are bound. Do not enable production Cloud commerce until these are set for every sold individual SKU.', 'reactwoo-api-manager' ); ?></p>
 				</td>
 			</tr>
 			<tr>

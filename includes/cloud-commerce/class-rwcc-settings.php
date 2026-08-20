@@ -40,9 +40,13 @@ class RWCC_Settings {
 			'claim_ttl_sec'       => 1800,
 			'replay_window_sec'   => 300,
 			'return_origins'      => "https://decision.reactwoo.com\nhttps://reactwoo.com",
+			'product_decision_cloud' => '',
 			'product_starter'     => '',
 			'product_growth'      => '',
 			'product_scale'       => '',
+			'product_geocore_pro' => '',
+			'product_geo_commerce' => '',
+			'product_geo_optimise' => '',
 			'activation_path'     => '/activate',
 			'allow_http_local'    => false,
 		);
@@ -158,6 +162,7 @@ class RWCC_Settings {
 
 	/**
 	 * Fallback product/variation IDs keyed by internal plan.
+	 * Values may be comma-separated (monthly, annual, sandbox replacements).
 	 *
 	 * @return array<string,string>
 	 */

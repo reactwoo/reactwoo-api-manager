@@ -69,6 +69,8 @@ class RWCC_Payload {
 			array( 'key' => 'rw_cloud_plan', 'value' => $plan ),
 			array( 'key' => '_reactwoo_cloud_org_id', 'value' => $org ),
 			array( 'key' => '_reactwoo_cloud_plan', 'value' => $plan ),
+			array( 'key' => 'rw_cloud_billing_cycle', 'value' => RWCC_Plan_Map::normalize_billing_cycle( $input['billing_cycle'] ?? '' ) ),
+			array( 'key' => '_rw_cloud_billing_cycle', 'value' => RWCC_Plan_Map::normalize_billing_cycle( $input['billing_cycle'] ?? '' ) ),
 			array( 'key' => '_reactwoo_cloud_product_id', 'value' => $product_id ),
 			array( 'key' => 'rw_cloud_provisioning_id', 'value' => (string) ( $input['provisioning_id'] ?? '' ) ),
 			array( 'key' => 'rw_cloud_identity_user', 'value' => (string) ( $input['identity_user'] ?? '' ) ),

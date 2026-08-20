@@ -47,6 +47,11 @@ class RWCC_Lifecycle {
 	private $identity_client;
 
 	/**
+	 * @var callable|null fn(int $customer_id): object[]
+	 */
+	private $subscription_finder;
+
+	/**
 	 * @param RWCC_Settings   $settings Settings.
 	 * @param RWCC_Plan_Map   $plans    Plan map.
 	 * @param RWCC_Order_Meta $meta     Meta helper.
@@ -71,6 +76,15 @@ class RWCC_Lifecycle {
 	}
 
 	/**
+	 * Optional override for tests (avoids WooCommerce Subscriptions).
+	 *
+	 * @param callable $finder fn(int $customer_id): object[].
+	 */
+	public function set_subscription_finder( $finder ) {
+		$this->subscription_finder = is_callable( $finder ) ? $finder : null;
+	}
+
+	/**
 	 * Register Cloud-only WooCommerce hooks and API Manager observe-only listeners.
 	 */
 	public function register() {
@@ -86,6 +100,7 @@ class RWCC_Lifecycle {
 		add_action( 'woocommerce_store_api_checkout_update_order_meta', array( $this, 'capture_handoff_on_order' ), 20, 1 );
 		add_action( 'woocommerce_subscriptions_switch_completed', array( $this, 'on_switch_completed' ), 20, 1 );
 		add_action( 'woocommerce_order_refunded', array( $this, 'on_refunded' ), 20, 2 );
+		add_action( 'woocommerce_scheduled_subscription_payment', array( $this, 'block_superseded_payment' ), 1, 1 );
 		add_action( 'template_redirect', array( $this, 'intercept_handoff_query' ), 5 );
 	}
 
@@ -132,7 +147,34 @@ class RWCC_Lifecycle {
 		}
 		if ( $new_status === 'pending-cancel' ) {
 			$this->emit( 'cancellation', $subscription, null, array( 'status' => 'pending-cancel' ) );
+			return;
 		}
+		if ( $new_status === 'active' ) {
+			$this->cancel_scheduled_downgrade( $subscription );
+		}
+	}
+
+	/**
+	 * Cloud reactivation must not charge previously scheduled individuals (PLAN.md state 13).
+	 *
+	 * @param object $subscription Cloud subscription.
+	 */
+	private function cancel_scheduled_downgrade( $subscription ) {
+		if ( ! class_exists( 'RWCC_Downgrade' ) || ! is_object( $subscription ) || ! method_exists( $subscription, 'get_meta' ) ) {
+			return;
+		}
+		$existing = $subscription->get_meta( RWCC_Downgrade::META_KEY, true );
+		if ( ! is_array( $existing ) || empty( $existing['state'] ) ) {
+			return;
+		}
+		if ( in_array( $existing['state'], array( RWCC_Downgrade::STATE_CANCELLED, RWCC_Downgrade::STATE_COMPLETED ), true ) ) {
+			return;
+		}
+		$cancelled = RWCC_Downgrade::cancel_schedule( $existing );
+		if ( class_exists( 'RWCC_Scheduled_Subscription' ) ) {
+			$cancelled = RWCC_Scheduled_Subscription::cancel_created( $cancelled );
+		}
+		RWCC_Downgrade::persist( $subscription, $cancelled );
 	}
 
 	/**
@@ -198,7 +240,31 @@ class RWCC_Lifecycle {
 	 * @param object|null $order        Renewal order.
 	 */
 	public function on_renewal( $subscription, $order = null ) {
+		if ( RWCC_Supersession::block_renewal( $subscription ) ) {
+			return array( 'ok' => false, 'error' => 'superseded' );
+		}
 		$this->emit( 'renewal', $subscription, $order );
+	}
+
+	/**
+	 * Covered individuals superseded by Cloud must not take another automatic payment.
+	 *
+	 * @param int|object $subscription_id Subscription id or object.
+	 */
+	public function block_superseded_payment( $subscription_id ) {
+		$subscription = is_object( $subscription_id ) ? $subscription_id : null;
+		if ( ! $subscription && function_exists( 'wcs_get_subscription' ) ) {
+			$subscription = wcs_get_subscription( (int) $subscription_id );
+		}
+		if ( ! $subscription || ! RWCC_Supersession::block_renewal( $subscription ) ) {
+			return;
+		}
+		if ( method_exists( $subscription, 'update_dates' ) ) {
+			$subscription->update_dates( array( 'next_payment' => 0 ) );
+			if ( method_exists( $subscription, 'save' ) ) {
+				$subscription->save();
+			}
+		}
 	}
 
 	/**
@@ -345,6 +411,7 @@ class RWCC_Lifecycle {
 				'org_id'            => $org,
 				'plan'              => $line['plan'],
 				'product_id'        => $line['product_id'],
+				'billing_cycle'     => isset( $line['billing_cycle'] ) ? $line['billing_cycle'] : '',
 				'identity_user'     => $customer_id,
 				'identity_email'    => $identity_email,
 				'identity_subject'  => RWCC_Identity::subject_for_user( $customer_id ),
@@ -417,6 +484,7 @@ class RWCC_Lifecycle {
 			$order,
 			array(
 				'plan'          => $line['plan'],
+				'billing_cycle' => isset( $line['billing_cycle'] ) ? $line['billing_cycle'] : '',
 				'status'        => 'active',
 				'claim_hash'    => isset( $issued['hash'] ) ? $issued['hash'] : '',
 				'claim_expires' => isset( $issued['expires_at'] ) ? $issued['expires_at'] : '',
@@ -424,12 +492,30 @@ class RWCC_Lifecycle {
 		);
 		$this->stamp_org_from_delivery( $subscription, $order, $delivery );
 
+		$webhook_ok  = ! empty( $delivery['ok'] );
+		$supersession = array( 'committed' => array(), 'skipped' => array(), 'failed' => true );
+		if ( $webhook_ok ) {
+			$supersession = RWCC_Supersession::commit_covered(
+				$subscription,
+				$this->customer_subscriptions( $customer_id ),
+				$this->settings,
+				$this->plans,
+				array(
+					'ok'                    => true,
+					'webhook_ok'            => true,
+					'plan'                  => $line['plan'],
+					'cloud_subscription_id' => method_exists( $subscription, 'get_id' ) ? (string) $subscription->get_id() : '',
+				)
+			);
+		}
+
 		return array(
 			'ok'              => true,
 			'claim'           => $issued,
 			'activation_url'  => $activation_url,
 			'webhook'         => $delivery,
 			'provisioning_id' => $applied[ RWCC_Order_Meta::META_PROVISIONING ],
+			'supersession'    => $supersession,
 		);
 	}
 
@@ -463,6 +549,11 @@ class RWCC_Lifecycle {
 				'event'                 => $event,
 				'status'                => isset( $overrides['status'] ) ? $overrides['status'] : ( method_exists( $subscription, 'get_status' ) ? $subscription->get_status() : 'active' ),
 				'plan'                  => $plan,
+				'billing_cycle'         => isset( $overrides['billing_cycle'] ) && $overrides['billing_cycle']
+					? $overrides['billing_cycle']
+					: ( isset( $line['billing_cycle'] ) && $line['billing_cycle']
+						? $line['billing_cycle']
+						: RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_BILLING_CYCLE ) ),
 				'org_id'                => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_ORG ),
 				'subscription_id'       => method_exists( $subscription, 'get_id' ) ? $subscription->get_id() : 0,
 				'customer_id'           => method_exists( $subscription, 'get_customer_id' ) ? $subscription->get_customer_id() : 0,
@@ -521,13 +612,36 @@ class RWCC_Lifecycle {
 		if ( method_exists( $subscription, 'get_parent_id' ) ) {
 			$parent_id = (int) $subscription->get_parent_id();
 		}
-		return RWCC_Reconcile::snapshot(
+		$customer_id = method_exists( $subscription, 'get_customer_id' ) ? (int) $subscription->get_customer_id() : 0;
+		$plan        = $line['plan'] ? $line['plan'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PLAN );
+		$individuals = array();
+		foreach ( $this->customer_subscriptions( $customer_id ) as $candidate ) {
+			if ( ! is_object( $candidate ) ) {
+				continue;
+			}
+			if ( method_exists( $candidate, 'get_id' ) && method_exists( $subscription, 'get_id' ) && (int) $candidate->get_id() === (int) $subscription->get_id() ) {
+				continue;
+			}
+			$individuals[] = RWCC_Supersession::row_from_subscription( $candidate );
+		}
+		$overlap = RWCC_Overlap::detect(
+			array(
+				'plan'       => $plan,
+				'status'     => method_exists( $subscription, 'get_status' ) ? $subscription->get_status() : '',
+				'product_id' => $line['product_id'] ? $line['product_id'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PRODUCT ),
+				'renewing'   => true,
+			),
+			$individuals,
+			$this->settings,
+			$this->plans
+		);
+		$snapshot = RWCC_Reconcile::snapshot(
 			array(
 				'subscription_id'       => method_exists( $subscription, 'get_id' ) ? $subscription->get_id() : 0,
-				'customer_id'           => method_exists( $subscription, 'get_customer_id' ) ? $subscription->get_customer_id() : 0,
+				'customer_id'           => $customer_id,
 				'order_id'              => $parent_id,
 				'status'                => method_exists( $subscription, 'get_status' ) ? $subscription->get_status() : '',
-				'plan'                  => $line['plan'] ? $line['plan'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PLAN ),
+				'plan'                  => $plan,
 				'org_id'                => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_ORG ),
 				'provisioning_id'       => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PROVISIONING ),
 				'product_id'            => $line['product_id'] ? $line['product_id'] : RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PRODUCT ),
@@ -540,6 +654,25 @@ class RWCC_Lifecycle {
 				'claim_used'            => RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_CLAIM_USED ),
 			)
 		);
+		$snapshot['billing_overlap'] = ! empty( $overlap['overlap'] );
+		return $snapshot;
+	}
+
+	/**
+	 * @param int $customer_id Woo customer id.
+	 * @return object[]
+	 */
+	private function customer_subscriptions( $customer_id ) {
+		$customer_id = (int) $customer_id;
+		if ( is_callable( $this->subscription_finder ) ) {
+			$found = call_user_func( $this->subscription_finder, $customer_id );
+			return is_array( $found ) ? $found : array();
+		}
+		if ( $customer_id > 0 && function_exists( 'wcs_get_users_subscriptions' ) ) {
+			$found = wcs_get_users_subscriptions( $customer_id );
+			return is_array( $found ) ? array_values( $found ) : array();
+		}
+		return array();
 	}
 
 	/**

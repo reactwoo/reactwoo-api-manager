@@ -37,6 +37,17 @@ class RWCC_Bootstrap {
 		require_once $dir . 'class-rwcc-identity-client.php';
 		require_once $dir . 'class-rwcc-settings.php';
 		require_once $dir . 'class-rwcc-plan-map.php';
+		require_once $dir . 'class-rwcc-coverage.php';
+		require_once $dir . 'class-rwcc-transition.php';
+		require_once $dir . 'class-rwcc-upgrade-credit.php';
+		require_once $dir . 'class-rwcc-checkout-credit.php';
+		require_once $dir . 'class-rwcc-downgrade.php';
+		require_once $dir . 'class-rwcc-scheduled-subscription.php';
+		require_once $dir . 'class-rwcc-entitlement-handover.php';
+		require_once $dir . 'class-rwcc-licence-reuse.php';
+		require_once $dir . 'class-rwcc-product-copy.php';
+		require_once $dir . 'class-rwcc-overlap.php';
+		require_once $dir . 'class-rwcc-supersession.php';
 		require_once $dir . 'class-rwcc-urls.php';
 		require_once $dir . 'class-rwcc-handoff.php';
 		require_once $dir . 'class-rwcc-claims.php';
@@ -81,6 +92,12 @@ class RWCC_Bootstrap {
 
 		$account = new RWCC_Account( $lifecycle, $identity_client );
 		$account->register();
+
+		$checkout_credit = new RWCC_Checkout_Credit( $settings, $plans );
+		$checkout_credit->register();
+
+		$product_copy = new RWCC_Product_Copy();
+		$product_copy->register();
 		add_action( 'template_redirect', array( $account, 'maybe_redirect_activation' ), 6 );
 		add_action( 'template_redirect', array( $account, 'maybe_redirect_open_cloud' ), 7 );
 		add_filter( 'allowed_redirect_hosts', array( $this, 'allow_cloud_host' ) );

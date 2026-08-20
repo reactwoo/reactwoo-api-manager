@@ -89,15 +89,19 @@ class RWCC_Crypto {
 	/**
 	 * Canonical Decision Cloud handoff string (must match storeHandoff.js).
 	 *
-	 * @param array $params Keys: action, org, plan, exp, return.
+	 * @param array $params Keys: action, org, plan, exp, return, optional product.
+	 * @param bool  $with_product Include product line (new signatures).
 	 * @return string
 	 */
-	public static function handoff_canonical( array $params ) {
+	public static function handoff_canonical( array $params, $with_product = false ) {
 		$keys = array( 'action', 'org', 'plan', 'exp', 'return' );
+		if ( $with_product ) {
+			$keys[] = 'product';
+		}
 		$lines = array();
 		foreach ( $keys as $key ) {
-			$value    = isset( $params[ $key ] ) ? (string) $params[ $key ] : '';
-			$lines[]  = $key . '=' . $value;
+			$value   = isset( $params[ $key ] ) ? (string) $params[ $key ] : '';
+			$lines[] = $key . '=' . $value;
 		}
 		return implode( "\n", $lines );
 	}
@@ -107,13 +111,16 @@ class RWCC_Crypto {
 	 *
 	 * @param array  $params Canonical params.
 	 * @param string $secret Handoff secret.
+	 * @param bool   $with_product Include product in canonical string.
 	 * @return string
 	 */
-	public static function sign_handoff( array $params, $secret ) {
-		return hash_hmac( 'sha256', self::handoff_canonical( $params ), (string) $secret );
+	public static function sign_handoff( array $params, $secret, $with_product = false ) {
+		return hash_hmac( 'sha256', self::handoff_canonical( $params, $with_product ), (string) $secret );
 	}
 
 	/**
+	 * Accept current (product-bound) and legacy (five-field) signatures.
+	 *
 	 * @param array  $params    Canonical params.
 	 * @param string $signature Hex signature.
 	 * @param string $secret    Handoff secret.
@@ -123,7 +130,12 @@ class RWCC_Crypto {
 		if ( '' === (string) $secret || '' === (string) $signature ) {
 			return false;
 		}
-		return self::equals( self::sign_handoff( $params, $secret ), (string) $signature );
+		$given = (string) $signature;
+		$has_product = isset( $params['product'] ) && (string) $params['product'] !== '';
+		if ( $has_product && self::equals( self::sign_handoff( $params, $secret, true ), $given ) ) {
+			return true;
+		}
+		return self::equals( self::sign_handoff( $params, $secret, false ), $given );
 	}
 
 	/**

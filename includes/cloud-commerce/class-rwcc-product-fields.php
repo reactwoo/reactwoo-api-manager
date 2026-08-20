@@ -1,6 +1,6 @@
 <?php
 /**
- * Product / variation mapping UI: Decision Cloud plan.
+ * Product / variation mapping UI: Decision Cloud plan, billing cycle, type.
  *
  * @package ReactWoo_API_Manager
  */
@@ -27,18 +27,37 @@ class RWCC_Product_Fields {
 		if ( ! $product || ! ( $product->is_type( 'subscription' ) || $product->is_type( 'variable-subscription' ) ) ) {
 			return;
 		}
-		$current = (string) get_post_meta( $post->ID, RWCC_Plan_Map::META_KEY, true );
 		echo '<div class="options_group">';
 		woocommerce_wp_select(
 			array(
-				'id'          => RWCC_Plan_Map::META_KEY,
-				'label'       => __( 'Decision Cloud plan', 'reactwoo-api-manager' ),
-				'description' => __( 'Maps this product to an internal Cloud plan (starter, growth, scale). Leave blank for standalone plugin licences.', 'reactwoo-api-manager' ),
+				'id'          => RWCC_Plan_Map::META_PRODUCT_TYPE,
+				'label'       => __( 'ReactWoo product type', 'reactwoo-api-manager' ),
+				'description' => __( 'Mark the Decision Cloud parent product. Do not put a plan on the parent — set starter/growth/scale on each variation.', 'reactwoo-api-manager' ),
 				'desc_tip'    => true,
-				'options'     => $this->options(),
-				'value'       => $current,
+				'options'     => $this->type_options(),
+				'value'       => (string) get_post_meta( $post->ID, RWCC_Plan_Map::META_PRODUCT_TYPE, true ),
 			)
 		);
+		if ( $product->is_type( 'subscription' ) ) {
+			woocommerce_wp_select(
+				array(
+					'id'          => RWCC_Plan_Map::META_KEY,
+					'label'       => __( 'Decision Cloud plan', 'reactwoo-api-manager' ),
+					'description' => __( 'Maps this product to an internal Cloud plan. Leave blank for standalone plugin licences.', 'reactwoo-api-manager' ),
+					'desc_tip'    => true,
+					'options'     => $this->plan_options(),
+					'value'       => (string) get_post_meta( $post->ID, RWCC_Plan_Map::META_KEY, true ),
+				)
+			);
+			woocommerce_wp_select(
+				array(
+					'id'          => RWCC_Plan_Map::META_BILLING_CYCLE,
+					'label'       => __( 'Decision Cloud billing cycle', 'reactwoo-api-manager' ),
+					'options'     => $this->cycle_options(),
+					'value'       => (string) get_post_meta( $post->ID, RWCC_Plan_Map::META_BILLING_CYCLE, true ),
+				)
+			);
+		}
 		echo '</div>';
 	}
 
@@ -46,30 +65,58 @@ class RWCC_Product_Fields {
 	 * @param int $post_id Product id.
 	 */
 	public function save_simple_field( $post_id ) {
-		$plan = isset( $_POST[ RWCC_Plan_Map::META_KEY ] ) ? RWCC_Plan_Map::normalize_plan( wp_unslash( $_POST[ RWCC_Plan_Map::META_KEY ] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		if ( $plan ) {
-			update_post_meta( $post_id, RWCC_Plan_Map::META_KEY, $plan );
-		} else {
-			delete_post_meta( $post_id, RWCC_Plan_Map::META_KEY );
-		}
+		$this->save_meta(
+			$post_id,
+			RWCC_Plan_Map::META_PRODUCT_TYPE,
+			isset( $_POST[ RWCC_Plan_Map::META_PRODUCT_TYPE ] ) ? RWCC_Plan_Map::normalize_product_type( wp_unslash( $_POST[ RWCC_Plan_Map::META_PRODUCT_TYPE ] ) ) : '' // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		);
+		$this->save_meta(
+			$post_id,
+			RWCC_Plan_Map::META_KEY,
+			isset( $_POST[ RWCC_Plan_Map::META_KEY ] ) ? RWCC_Plan_Map::normalize_plan( wp_unslash( $_POST[ RWCC_Plan_Map::META_KEY ] ) ) : '' // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		);
+		$this->save_meta(
+			$post_id,
+			RWCC_Plan_Map::META_BILLING_CYCLE,
+			isset( $_POST[ RWCC_Plan_Map::META_BILLING_CYCLE ] ) ? RWCC_Plan_Map::normalize_billing_cycle( wp_unslash( $_POST[ RWCC_Plan_Map::META_BILLING_CYCLE ] ) ) : '' // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		);
 	}
 
 	/**
-	 * @param int                  $loop           Loop index.
-	 * @param array                $variation_data Variation data.
-	 * @param WP_Post              $variation      Variation post.
+	 * @param int     $loop           Loop index.
+	 * @param array   $variation_data Variation data.
+	 * @param WP_Post $variation      Variation post.
 	 */
 	public function render_variation_field( $loop, $variation_data, $variation ) {
 		unset( $variation_data );
-		$id      = is_object( $variation ) ? (int) $variation->ID : 0;
-		$current = $id ? (string) get_post_meta( $id, RWCC_Plan_Map::META_KEY, true ) : '';
+		$id = is_object( $variation ) ? (int) $variation->ID : 0;
 		woocommerce_wp_select(
 			array(
 				'id'            => RWCC_Plan_Map::META_KEY . '_' . $loop,
 				'name'          => 'variable_rw_cloud_plan[' . $loop . ']',
 				'label'         => __( 'Decision Cloud plan', 'reactwoo-api-manager' ),
-				'options'       => $this->options(),
-				'value'         => $current,
+				'options'       => $this->plan_options(),
+				'value'         => $id ? (string) get_post_meta( $id, RWCC_Plan_Map::META_KEY, true ) : '',
+				'wrapper_class' => 'form-row form-row-first',
+			)
+		);
+		woocommerce_wp_select(
+			array(
+				'id'            => RWCC_Plan_Map::META_BILLING_CYCLE . '_' . $loop,
+				'name'          => 'variable_rw_cloud_billing_cycle[' . $loop . ']',
+				'label'         => __( 'Billing cycle', 'reactwoo-api-manager' ),
+				'options'       => $this->cycle_options(),
+				'value'         => $id ? (string) get_post_meta( $id, RWCC_Plan_Map::META_BILLING_CYCLE, true ) : '',
+				'wrapper_class' => 'form-row form-row-last',
+			)
+		);
+		woocommerce_wp_select(
+			array(
+				'id'            => RWCC_Plan_Map::META_PRODUCT_TYPE . '_' . $loop,
+				'name'          => 'variable_rw_cloud_product_type[' . $loop . ']',
+				'label'         => __( 'ReactWoo product type', 'reactwoo-api-manager' ),
+				'options'       => $this->type_options(),
+				'value'         => $id ? (string) get_post_meta( $id, RWCC_Plan_Map::META_PRODUCT_TYPE, true ) : '',
 				'wrapper_class' => 'form-row form-row-full',
 			)
 		);
@@ -84,22 +131,62 @@ class RWCC_Product_Fields {
 		if ( isset( $_POST['variable_rw_cloud_plan'][ $loop ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			$plan = RWCC_Plan_Map::normalize_plan( wp_unslash( $_POST['variable_rw_cloud_plan'][ $loop ] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		}
-		if ( $plan ) {
-			update_post_meta( $variation_id, RWCC_Plan_Map::META_KEY, $plan );
+		$cycle = '';
+		if ( isset( $_POST['variable_rw_cloud_billing_cycle'][ $loop ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$cycle = RWCC_Plan_Map::normalize_billing_cycle( wp_unslash( $_POST['variable_rw_cloud_billing_cycle'][ $loop ] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		}
+		$type = '';
+		if ( isset( $_POST['variable_rw_cloud_product_type'][ $loop ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$type = RWCC_Plan_Map::normalize_product_type( wp_unslash( $_POST['variable_rw_cloud_product_type'][ $loop ] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		}
+		$this->save_meta( $variation_id, RWCC_Plan_Map::META_KEY, $plan );
+		$this->save_meta( $variation_id, RWCC_Plan_Map::META_BILLING_CYCLE, $cycle );
+		$this->save_meta( $variation_id, RWCC_Plan_Map::META_PRODUCT_TYPE, $type );
+	}
+
+	/**
+	 * @param int    $post_id Product id.
+	 * @param string $key     Meta key.
+	 * @param string $value   Value.
+	 */
+	private function save_meta( $post_id, $key, $value ) {
+		if ( $value ) {
+			update_post_meta( $post_id, $key, $value );
 		} else {
-			delete_post_meta( $variation_id, RWCC_Plan_Map::META_KEY );
+			delete_post_meta( $post_id, $key );
 		}
 	}
 
 	/**
 	 * @return array
 	 */
-	private function options() {
+	private function plan_options() {
 		return array(
 			''        => __( '— Not a Cloud plan —', 'reactwoo-api-manager' ),
 			'starter' => __( 'Starter', 'reactwoo-api-manager' ),
 			'growth'  => __( 'Growth', 'reactwoo-api-manager' ),
 			'scale'   => __( 'Scale', 'reactwoo-api-manager' ),
+		);
+	}
+
+	/**
+	 * @return array
+	 */
+	private function cycle_options() {
+		return array(
+			''        => __( '— Not set —', 'reactwoo-api-manager' ),
+			'monthly' => __( 'Monthly', 'reactwoo-api-manager' ),
+			'annual'  => __( 'Annual', 'reactwoo-api-manager' ),
+		);
+	}
+
+	/**
+	 * @return array
+	 */
+	private function type_options() {
+		return array(
+			''               => __( '— Standalone / other —', 'reactwoo-api-manager' ),
+			'decision_cloud' => __( 'Decision Cloud', 'reactwoo-api-manager' ),
 		);
 	}
 }
