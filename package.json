@@ -10,6 +10,7 @@
     "package:zip": "python scripts/package_zip.py",
     "test": "php tests/run.php",
     "test:e2e:cloud": "php tests/e2e-purchase-to-cloud.php",
+    "test:e2e:woo-local": "php scripts/live_local_woo_e2e.php",
     "check:js": "node --check assets/js/account.js"
   }
 }

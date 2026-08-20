@@ -19,6 +19,27 @@ class RWCC_Scheduled_Subscription {
 	const META_CHARGE_NOW = '_rwcc_charge_now';
 
 	/**
+	 * WooCommerce Subscriptions rejects ISO-8601 (`gmdate( 'c' )`).
+	 *
+	 * @param string $value ISO-8601 or MySQL datetime.
+	 * @return string MySQL UTC datetime or empty.
+	 */
+	public static function woo_start_date( $value ) {
+		$value = trim( (string) $value );
+		if ( $value === '' ) {
+			return '';
+		}
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value ) ) {
+			return $value;
+		}
+		$ts = strtotime( $value );
+		if ( ! $ts ) {
+			return '';
+		}
+		return gmdate( 'Y-m-d H:i:s', $ts );
+	}
+
+	/**
 	 * Create pending individual subscriptions from a confirmed downgrade payload.
 	 *
 	 * @param array         $payload Confirmed RWCC_Downgrade payload.
@@ -176,7 +197,7 @@ class RWCC_Scheduled_Subscription {
 			'customer_id'      => isset( $spec['customer_id'] ) ? (int) $spec['customer_id'] : 0,
 			'billing_period'   => $period,
 			'billing_interval' => $interval,
-			'start_date'       => isset( $spec['start_date'] ) ? (string) $spec['start_date'] : '',
+			'start_date'       => self::woo_start_date( isset( $spec['start_date'] ) ? (string) $spec['start_date'] : '' ),
 		);
 		$created = wcs_create_subscription( $args );
 		if ( is_wp_error( $created ) ) {

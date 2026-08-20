@@ -28,7 +28,7 @@ Local ReactWoo (after the 2026-08-19 production restore) can be bound with `php 
 
 ## Upgrade credit at checkout
 
-When `REACTWOO_CLOUD_BRIDGE_ENABLED` is on, `RWCC_Checkout_Credit` shows the upgrade summary before confirm: included plugins, renewals that will stop, separately billed products, and remaining-term credit. Covered individuals with unexplained missing period/amount data **block** full-price Cloud checkout. Eligible credit is applied as an interim non-taxable negative cart fee (`Upgrade credit`) until PLAN.md §20 picks a final mechanic. Audit is stored on the order as `_rwcc_upgrade_credit` / `_rwcc_upgrade_credit_audit`.
+When `REACTWOO_CLOUD_BRIDGE_ENABLED` is on, `RWCC_Checkout_Credit` shows the upgrade summary before confirm: included plugins, renewals that will stop, separately billed products, and remaining-term credit. Covered individuals with unexplained missing period/amount data **block** full-price Cloud checkout. Eligible credit is applied as a non-taxable negative cart fee (`Upgrade credit`), capped at the Cloud cart line total excluding tax (PLAN.md §20). Audit is stored on the order as `_rwcc_upgrade_credit` / `_rwcc_upgrade_credit_audit`.
 
 ## Downgrade selection
 
@@ -40,7 +40,9 @@ Cloud subscription details in My Account include **Cancel or downgrade Decision 
 
 ## Scheduled individual subscriptions
 
-Confirmed downgrade selections are materialized as **pending** WooCommerce Subscriptions with `start_date` = Cloud paid-through (`RWCC_Scheduled_Subscription`). Nothing is charged at confirm time. Cloud reactivation cancels those pending individuals. Tests inject a creator so the module does not require live WCS.
+Confirmed downgrade selections are materialized as **pending** WooCommerce Subscriptions with `start_date` = Cloud paid-through (`RWCC_Scheduled_Subscription`). ISO-8601 values from `gmdate( 'c' )` are converted to MySQL UTC datetimes before `wcs_create_subscription`. Nothing is charged at confirm time. Cloud reactivation cancels those pending individuals.
+
+Live Local Woo E2E (no payment): `php scripts/live_local_woo_e2e.php` (Local host only). Fixture E2E: `php tests/e2e-purchase-to-cloud.php`.
 
 ## Entitlement handover
 

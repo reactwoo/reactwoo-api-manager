@@ -935,6 +935,7 @@ $after_cancel = RWCC_Scheduled_Subscription::cancel_created(
 rw_assert( count( $cancelled_woo ) === 2, 'Cloud reactivation cancels materialized pending Woo subscriptions' );
 rw_assert( count( $after_cancel['cancelled_subscription_ids'] ) === 2, 'Cancelled Woo ids are recorded' );
 
+rw_assert( RWCC_Scheduled_Subscription::woo_start_date( '2026-12-01T00:00:00+00:00' ) === '2026-12-01 00:00:00', 'ISO-8601 start dates convert for WooCommerce Subscriptions' );
 $denied_charge = RWCC_Scheduled_Subscription::default_creator( array( 'charge_now' => true, 'product_id' => '501' ) );
 rw_assert( $denied_charge['error'] === 'charge_now_forbidden' && empty( $denied_charge['charged'] ), 'Default Woo creator refuses charge_now' );
 $missing_product = RWCC_Scheduled_Subscription::default_creator( array( 'product_id' => '', 'start_date' => '2026-12-01T00:00:00+00:00' ) );
