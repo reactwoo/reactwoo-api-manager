@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.11
+Stable tag: 2.1.12
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,9 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.12 =
+* Decision Cloud bundle commerce companion: coverage maps, checkout credit, supersession, downgrade scheduling, handover. Still loads only when `REACTWOO_CLOUD_BRIDGE_ENABLED` is true.
 
 = 2.1.11 =
 * Cloud Sign in from Decision Cloud continues through My Account (`rwcc_open_cloud=1`) after store login. No Cloud password. Dashboard nonce remains on the in-account button.
