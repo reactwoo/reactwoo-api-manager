@@ -126,6 +126,7 @@ class ReactWoo_License_Server_API {
      *   @type string $billing_period
      *   @type int    $billing_interval
      *   @type string $renewal_frequency
+     *   @type string $plan_code
      * }
      * @return array|WP_Error
      */
@@ -171,6 +172,9 @@ class ReactWoo_License_Server_API {
 
         if ( isset( $args['correlation_id'] ) && $args['correlation_id'] ) {
             $body['correlation_id'] = $args['correlation_id'];
+        }
+        if ( isset( $args['plan_code'] ) && $args['plan_code'] ) {
+            $body['plan_code'] = strtolower( trim( (string) $args['plan_code'] ) );
         }
 
         $headers = array(

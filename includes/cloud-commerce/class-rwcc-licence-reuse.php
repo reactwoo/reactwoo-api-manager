@@ -71,4 +71,25 @@ class RWCC_Licence_Reuse {
 			'use_key' => '',
 		);
 	}
+
+	/**
+	 * Stamp starter|growth|scale onto Cloud licence provisioning (generic filter).
+	 *
+	 * @param mixed  $plan_code    Incoming value.
+	 * @param object $subscription Subscription-like object.
+	 * @param mixed  $order        Unused.
+	 * @param mixed  $package      Unused.
+	 * @return string
+	 */
+	public static function provision_plan_code( $plan_code, $subscription, $order = null, $package = null ) {
+		unset( $order, $package );
+		$incoming = class_exists( 'RWCC_Plan_Map' ) ? RWCC_Plan_Map::normalize_plan( $plan_code ) : '';
+		if ( $incoming !== '' ) {
+			return $incoming;
+		}
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_meta' ) || ! class_exists( 'RWCC_Order_Meta' ) || ! class_exists( 'RWCC_Plan_Map' ) ) {
+			return '';
+		}
+		return RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
+	}
 }

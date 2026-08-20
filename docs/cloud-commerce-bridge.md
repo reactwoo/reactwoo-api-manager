@@ -44,8 +44,12 @@ Confirmed downgrade selections are materialized as **pending** WooCommerce Subsc
 
 ## Entitlement handover
 
-`RWCC_Entitlement_Handover` keeps Cloud downloads on the Cloud subscription while Cloud is live (including a scheduled downgrade). After Cloud ends, selected individuals or free Geo Core apply. Activation failure keeps standalone access. Local configuration is never wiped.
+`RWCC_Entitlement_Handover` keeps Cloud downloads on the Cloud subscription while Cloud is live (including a scheduled downgrade). `ReactWoo_Plugin_Download_Service` hides ZIPs on superseded individuals and still allows Cloud `on-hold` (payment grace). After Cloud ends, selected individuals or free Geo Core apply. Activation failure keeps standalone access. Local configuration is never wiped.
 
 ## Licence reuse
 
-`RWCC_Licence_Reuse` does not treat a Cloud key as an individual plugin key. After Cloud ends, a historical individual key for the same slug may be reused only if that plugin was selected.
+`RWCC_Licence_Reuse` does not treat a Cloud key as an individual plugin key. The store passes `plan_code` through a generic provision filter. The license server reuses a historical individual key after Cloud ends, and refuses `as_individual` rewrite of a live Cloud key.
+
+## Production catalogue (operator)
+
+`scripts/bind_production_cloud_catalogue.sql` sets variation meta and PLAN marketing prices on parent **3166** / **3172–3177**. It does **not** enable `REACTWOO_CLOUD_BRIDGE_ENABLED`. Run only after confirming those post IDs on production. Local bind remains `php scripts/bind_local_cloud_catalogue.php`.

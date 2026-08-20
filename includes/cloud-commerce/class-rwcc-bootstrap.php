@@ -98,6 +98,7 @@ class RWCC_Bootstrap {
 
 		$product_copy = new RWCC_Product_Copy();
 		$product_copy->register();
+		add_filter( 'reactwoo_license_provision_plan_code', array( 'RWCC_Licence_Reuse', 'provision_plan_code' ), 10, 4 );
 		add_action( 'template_redirect', array( $account, 'maybe_redirect_activation' ), 6 );
 		add_action( 'template_redirect', array( $account, 'maybe_redirect_open_cloud' ), 7 );
 		add_filter( 'allowed_redirect_hosts', array( $this, 'allow_cloud_host' ) );

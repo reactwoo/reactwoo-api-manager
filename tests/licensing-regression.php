@@ -29,6 +29,7 @@ foreach ( $required_hooks as $hook ) {
 
 rw_assert( strpos( $handler, 'create_license_for_subscription' ) !== false, 'Standalone purchase still generates licences' );
 rw_assert( strpos( $handler, 'ReactWoo_License_Server_API' ) !== false, 'Licence generation still uses the licence server API' );
+rw_assert( strpos( $handler, 'reactwoo_license_provision_plan_code' ) !== false, 'Licence provision accepts a generic plan_code filter' );
 rw_assert( strpos( $handler, 'rw_cloud_' ) === false, 'Licence handler does not write Cloud order meta' );
 rw_assert( strpos( $handler, 'RWCC_' ) === false, 'Licence handler has no Cloud class references' );
 

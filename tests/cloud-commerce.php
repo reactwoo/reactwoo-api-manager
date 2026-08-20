@@ -233,6 +233,25 @@ rw_assert( ReactWoo_Plugin_Download_Service::entitled_plugin_slugs( $cloud_sub )
 $cloud_sub->update_meta_data( RWCC_Order_Meta::META_PLAN, 'growth' );
 rw_assert( count( ReactWoo_Plugin_Download_Service::entitled_plugin_slugs( $cloud_sub ) ) === 3, 'Growth subscription entitles three geo plugins' );
 
+$superseded_ind = new RWCC_Test_Subscription();
+$superseded_ind->id = 91;
+$superseded_ind->update_meta_data( RWCC_Supersession::META_SUPERSEDED, '1' );
+rw_assert( ReactWoo_Plugin_Download_Service::should_hide_downloads( $superseded_ind ), 'Superseded individuals hide My Account ZIPs' );
+rw_assert( ReactWoo_Plugin_Download_Service::entitled_plugin_slugs( $superseded_ind ) === array(), 'Superseded individuals do not list covered plugin slugs' );
+
+$hold_cloud = class_exists( 'WC_Subscription' ) ? new WC_Subscription( 92, 10, 'on-hold', array( RWCC_Order_Meta::META_PLAN => 'growth' ) ) : null;
+$hold_ind   = class_exists( 'WC_Subscription' ) ? new WC_Subscription( 93, 10, 'on-hold', array() ) : null;
+if ( $hold_cloud && $hold_ind ) {
+	rw_assert( ReactWoo_Plugin_Download_Service::subscription_can_download( $hold_cloud ), 'Cloud on-hold (payment grace) can still download' );
+	rw_assert( ! ReactWoo_Plugin_Download_Service::subscription_can_download( $hold_ind ), 'Standalone on-hold still cannot download' );
+}
+
+$handover_slugs = ReactWoo_Plugin_Download_Service::entitled_plugin_slugs( $cloud_sub );
+rw_assert( $handover_slugs === RWCC_Coverage::covered_skus( 'growth' ), 'Download service uses handover covered SKUs for live Cloud' );
+
+$plan_from_sub = RWCC_Licence_Reuse::provision_plan_code( '', $cloud_sub );
+rw_assert( $plan_from_sub === 'growth', 'Licence provision filter reads Cloud plan from subscription meta' );
+
 $plans->map_id( 3172, 'starter', 'monthly' );
 $plans->map_id( 3173, 'starter', 'annual' );
 $cadence_order = new RWCC_Test_Order();
@@ -1117,6 +1136,7 @@ rw_assert( $mismatch['reason'] === 'currency_mismatch', '§17 tax/currency: mism
 
 rw_assert( $handover_fail['local_config_kept'] === true, 'Existing plugin configuration is kept after failed activation' );
 rw_assert( $handover_none['local_config_kept'] === true, 'Existing plugin configuration is kept after downgrade to none' );
+rw_assert( ReactWoo_Plugin_Download_Service::should_hide_downloads( $superseded_ind ), '§17 downloads during Cloud come from Cloud, not superseded individuals' );
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} assertion(s) failed\n";

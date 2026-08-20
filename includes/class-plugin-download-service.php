@@ -16,6 +16,10 @@ class ReactWoo_Plugin_Download_Service {
 	/**
 	 * Subscription statuses that may download the plugin ZIP.
 	 *
+	 * Standalone individuals stay on this list. Cloud plans also allow
+	 * on-hold (payment grace) via subscription_can_download(); on-hold is
+	 * not added here so failed-payment individuals remain blocked.
+	 *
 	 * @return array<int, string>
 	 */
 	public static function entitled_statuses() {
@@ -23,14 +27,58 @@ class ReactWoo_Plugin_Download_Service {
 	}
 
 	/**
-	 * @param WC_Subscription $subscription Subscription.
+	 * Cloud-live statuses including payment grace (PLAN.md handover).
+	 *
+	 * @return array<int, string>
+	 */
+	public static function cloud_live_statuses() {
+		return array( 'active', 'pending-cancel', 'on-hold' );
+	}
+
+	/**
+	 * Covered individuals that Cloud superseded must not list ZIPs.
+	 *
+	 * @param object $subscription Subscription-like object.
+	 * @return bool
+	 */
+	public static function should_hide_downloads( $subscription ) {
+		return class_exists( 'RWCC_Supersession' ) && RWCC_Supersession::is_superseded( $subscription );
+	}
+
+	/**
+	 * Internal plan on a Cloud subscription, if the companion is loaded.
+	 *
+	 * @param object $subscription Subscription-like object.
+	 * @return string
+	 */
+	public static function cloud_plan( $subscription ) {
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_meta' ) ) {
+			return '';
+		}
+		if ( ! class_exists( 'RWCC_Order_Meta' ) || ! class_exists( 'RWCC_Plan_Map' ) ) {
+			return '';
+		}
+		return RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
+	}
+
+	/**
+	 * @param object $subscription Subscription-like object.
 	 * @return bool
 	 */
 	public static function subscription_can_download( $subscription ) {
-		if ( ! $subscription instanceof WC_Subscription ) {
+		if ( self::should_hide_downloads( $subscription ) ) {
 			return false;
 		}
-		$status = method_exists( $subscription, 'get_status' ) ? (string) $subscription->get_status() : '';
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_status' ) ) {
+			return false;
+		}
+		if ( class_exists( 'WC_Subscription' ) && ! ( $subscription instanceof WC_Subscription ) ) {
+			return false;
+		}
+		$status = strtolower( (string) $subscription->get_status() );
+		if ( self::cloud_plan( $subscription ) ) {
+			return in_array( $status, self::cloud_live_statuses(), true );
+		}
 		return in_array( $status, self::entitled_statuses(), true );
 	}
 
@@ -119,9 +167,20 @@ class ReactWoo_Plugin_Download_Service {
 	 * @return string[]
 	 */
 	public static function entitled_plugin_slugs( $subscription ) {
-		$plan = '';
-		if ( is_object( $subscription ) && method_exists( $subscription, 'get_meta' ) && class_exists( 'RWCC_Order_Meta' ) && class_exists( 'RWCC_Plan_Map' ) ) {
-			$plan = RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
+		if ( self::should_hide_downloads( $subscription ) ) {
+			$plan = self::cloud_plan( $subscription );
+			if ( $plan && class_exists( 'RWCC_Entitlement_Handover' ) ) {
+				$handover = RWCC_Entitlement_Handover::downloads( $plan, false, true );
+				return isset( $handover['slugs'] ) && is_array( $handover['slugs'] ) ? $handover['slugs'] : array();
+			}
+			return array();
+		}
+		$plan = self::cloud_plan( $subscription );
+		if ( $plan && class_exists( 'RWCC_Entitlement_Handover' ) ) {
+			$live     = is_object( $subscription ) && method_exists( $subscription, 'get_status' )
+				&& in_array( strtolower( (string) $subscription->get_status() ), self::cloud_live_statuses(), true );
+			$handover = RWCC_Entitlement_Handover::downloads( $plan, $live, false );
+			return isset( $handover['slugs'] ) && is_array( $handover['slugs'] ) ? $handover['slugs'] : array();
 		}
 		if ( $plan && class_exists( 'RWCC_Coverage' ) ) {
 			return RWCC_Coverage::covered_skus( $plan );
@@ -269,6 +328,9 @@ class ReactWoo_Plugin_Download_Service {
 	 * @return array<int,array<string,string>>
 	 */
 	public static function build_synthetic_files( $subscription ) {
+		if ( self::should_hide_downloads( $subscription ) ) {
+			return array();
+		}
 		if ( ! self::subscription_can_download( $subscription ) ) {
 			return array();
 		}
@@ -276,10 +338,7 @@ class ReactWoo_Plugin_Download_Service {
 			return array();
 		}
 
-		$plan = '';
-		if ( is_object( $subscription ) && method_exists( $subscription, 'get_meta' ) && class_exists( 'RWCC_Order_Meta' ) && class_exists( 'RWCC_Plan_Map' ) ) {
-			$plan = RWCC_Plan_Map::normalize_plan( (string) $subscription->get_meta( RWCC_Order_Meta::META_PLAN, true ) );
-		}
+		$plan = self::cloud_plan( $subscription );
 
 		$rows = array();
 		if ( $plan && class_exists( 'RWCC_Coverage' ) ) {

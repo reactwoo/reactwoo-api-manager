@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'RWCC_LOAD_ONLY', true );
 require_once __DIR__ . '/cloud-commerce.php';
+require_once dirname( __DIR__ ) . '/includes/class-plugin-download-service.php';
 
 $order = new RWCC_Test_Order();
 $order->items = array( new RWCC_Test_Item( 202 ) );
@@ -84,6 +85,41 @@ echo "  activation_url: {$result['activation_url']}\n";
 echo "  claim stored hashed: {$result['claim']['hash']}\n";
 echo "  webhook delivery: {$fixture['delivery_id']}\n";
 echo "  fixture: {$fixture_path}\n";
+
+$fail = RWCC_Entitlement_Handover::snapshot( array( 'plan' => 'growth', 'activation_ok' => false ) );
+$live = RWCC_Entitlement_Handover::snapshot(
+	array(
+		'plan'               => 'growth',
+		'cloud_status'       => 'active',
+		'cloud_paid_through' => time() + 86400,
+		'now'                => time(),
+	)
+);
+$gap = RWCC_Entitlement_Handover::downloads( 'growth', false, true );
+$superseded = new RWCC_Test_Subscription();
+$superseded->update_meta_data( RWCC_Supersession::META_SUPERSEDED, '1' );
+if ( $fail['gap'] !== false || $live['gap'] !== false || empty( $gap['gap'] ) || ! ReactWoo_Plugin_Download_Service::should_hide_downloads( $superseded ) ) {
+	fwrite( STDERR, "E2E §17 handover/download matrix failed\n" );
+	exit( 1 );
+}
+$overlap = RWCC_Overlap::quote_credit(
+	array(
+		array(
+			'id'           => 1,
+			'covered'      => true,
+			'status'       => 'active',
+			'currency'     => 'GBP',
+			'period_start' => time() - 10,
+			'period_end'   => time() + 100000,
+			'amount_paid'  => 40,
+		),
+	)
+);
+if ( $overlap['refund'] !== false ) {
+	fwrite( STDERR, "E2E overlap quote must not auto-refund\n" );
+	exit( 1 );
+}
+echo "  §17 handover / superseded downloads / overlap quote: ok\n";
 
 $cloud = getenv( 'REACTWOO_DECISION_CLOUD_DIR' );
 if ( ! $cloud ) {

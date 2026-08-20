@@ -525,26 +525,32 @@ class ReactWoo_Subscription_Handler {
         $customer_email = $order->get_billing_email();
         $customer_name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 
+        $provision_args = array(
+            'customer_email'     => $customer_email,
+            'customer_name'      => $customer_name,
+            'package_slug'       => $package['slug'],
+            'wc_subscription_id' => $subscription->get_id(),
+            'wc_order_id'        => $order->get_id(),
+            'status'             => 'active',
+            'domain'             => $domain,
+            'correlation_id'     => $correlation_id,
+            'price'              => $subscription_price,
+            'currency'           => $currency,
+            'start_date'         => $start_date,
+            'billing_period'     => $billing_period,
+            'billing_interval'   => $billing_interval,
+            'renewal_frequency'  => $renewal_frequency,
+        );
+        if ( function_exists( 'apply_filters' ) ) {
+            $plan_code = (string) apply_filters( 'reactwoo_license_provision_plan_code', '', $subscription, $order, $package );
+            if ( $plan_code !== '' ) {
+                $provision_args['plan_code'] = $plan_code;
+            }
+        }
+
         // Provision via v1 endpoint (idempotent on subscription id)
         // Include pricing/billing metadata so license server can populate price, billing_period, etc.
-        $license = $api->provision_license_v1(
-            array(
-                'customer_email'     => $customer_email,
-                'customer_name'      => $customer_name,
-                'package_slug'       => $package['slug'],
-                'wc_subscription_id' => $subscription->get_id(),
-                'wc_order_id'        => $order->get_id(),
-                'status'             => 'active',
-                'domain'             => $domain,
-                'correlation_id'     => $correlation_id,
-                'price'              => $subscription_price,
-                'currency'           => $currency,
-                'start_date'         => $start_date,
-                'billing_period'     => $billing_period,
-                'billing_interval'   => $billing_interval,
-                'renewal_frequency'  => $renewal_frequency,
-            )
-        );
+        $license = $api->provision_license_v1( $provision_args );
 
         if ( is_wp_error( $license ) ) {
             $this->log_debug(
