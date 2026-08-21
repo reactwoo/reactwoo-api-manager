@@ -7,7 +7,8 @@
 --
 -- Before running: confirm table prefix is wp_ and that these post IDs still exist.
 -- After running: bind Decision Cloud commerce settings in wp-admin
--- (product_starter=3172,3173 etc.). Prices below are PLAN.md marketing GBP.
+-- (product_starter=3172,3173 etc.) or run merge_production_cloud_settings.php
+-- (empty keys only; never overwrites secrets). Prices below are PLAN.md marketing GBP.
 
 -- Parent
 UPDATE wp_postmeta SET meta_value='decision_cloud' WHERE post_id=3166 AND meta_key='_rw_cloud_product_type';

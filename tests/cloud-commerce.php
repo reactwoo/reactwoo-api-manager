@@ -1139,6 +1139,25 @@ rw_assert( $handover_fail['local_config_kept'] === true, 'Existing plugin config
 rw_assert( $handover_none['local_config_kept'] === true, 'Existing plugin configuration is kept after downgrade to none' );
 rw_assert( ReactWoo_Plugin_Download_Service::should_hide_downloads( $superseded_ind ), '§17 downloads during Cloud come from Cloud, not superseded individuals' );
 
+$merge_current = array(
+	'webhook_secret'  => 'keep-me',
+	'handoff_secret'  => 'keep-handoff',
+	'product_starter' => '3172,3173',
+);
+$merge_fill = array(
+	'webhook_secret'         => 'attacker',
+	'product_starter'        => '9999',
+	'product_growth'         => '3174,3175',
+	'product_geocore_pro'    => '2294',
+	'allow_http_local'       => true,
+);
+$merged_settings = RWCC_Settings::merge_empty( $merge_current, $merge_fill );
+rw_assert( $merged_settings['webhook_secret'] === 'keep-me', 'merge_empty never copies secrets from the fill map' );
+rw_assert( $merged_settings['product_starter'] === '3172,3173', 'merge_empty does not overwrite a filled product map' );
+rw_assert( $merged_settings['product_growth'] === '3174,3175', 'merge_empty fills an empty product map key' );
+rw_assert( empty( $merged_settings['allow_http_local'] ), 'merge_empty never enables allow_http_local' );
+rw_assert( RWCC_Settings::catalogue_gaps( $merged_settings ) === array( 'product_decision_cloud', 'product_scale', 'product_geo_commerce', 'product_geo_optimise' ), 'catalogue_gaps lists remaining empty product keys' );
+
 if ( $failures > 0 ) {
 	echo "\n{$failures} assertion(s) failed\n";
 	exit( 1 );

@@ -54,4 +54,4 @@ Live Local Woo E2E (no payment): `php scripts/live_local_woo_e2e.php` (Local hos
 
 ## Production catalogue (operator)
 
-`scripts/bind_production_cloud_catalogue.sql` sets variation meta and PLAN marketing prices on parent **3166** / **3172–3177**. It does **not** enable `REACTWOO_CLOUD_BRIDGE_ENABLED`. Run only after confirming those post IDs on production. Local bind remains `php scripts/bind_local_cloud_catalogue.php`.
+`scripts/bind_production_cloud_catalogue.sql` sets variation meta and PLAN marketing prices on parent **3166** / **3172–3177**. It does **not** write `rwcc_settings`. After SQL: paste product IDs in wp-admin or run `wp eval-file scripts/merge_production_cloud_settings.php` (empty keys only; never overwrites secrets). Local bind remains `php scripts/bind_local_cloud_catalogue.php`.

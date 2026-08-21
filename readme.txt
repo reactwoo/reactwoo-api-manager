@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.13
+Stable tag: 2.1.14
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,9 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.14 =
+* Production catalogue settings merge fills empty product IDs only and never overwrites secrets. Admin warns when catalogue keys are still empty. Convert ISO-8601 downgrade start dates to MySQL UTC so WooCommerce Subscriptions can materialize pending individuals.
 
 = 2.1.13 =
 * Wire Cloud entitlement handover into My Account downloads (superseded individuals hide ZIPs; Cloud on-hold stays downloadable). Pass plan_code into licence provisioning via a generic filter. Operator SQL for production catalogue bind does not enable Cloud commerce.

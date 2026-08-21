@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $values = isset( $values ) && is_array( $values ) ? $values : array();
 $notice = isset( $notice ) ? $notice : '';
+$gaps   = isset( $gaps ) && is_array( $gaps ) ? $gaps : array();
 ?>
 <div class="wrap">
 	<h1><?php esc_html_e( 'Decision Cloud commerce', 'reactwoo-api-manager' ); ?></h1>
@@ -19,6 +20,14 @@ $notice = isset( $notice ) ? $notice : '';
 
 	<?php if ( $notice ) : ?>
 		<div class="notice notice-success"><p><?php echo esc_html( $notice ); ?></p></div>
+	<?php endif; ?>
+
+	<?php if ( $gaps ) : ?>
+		<div class="notice notice-warning">
+			<p><?php esc_html_e( 'Catalogue SQL sets variation meta and prices. Upgrade credit still needs these settings filled (empty keys only — secrets are untouched):', 'reactwoo-api-manager' ); ?></p>
+			<p><code><?php echo esc_html( implode( ', ', $gaps ) ); ?></code></p>
+			<p><?php esc_html_e( 'Paste the inspected IDs below, or on production run: wp eval-file scripts/merge_production_cloud_settings.php', 'reactwoo-api-manager' ); ?></p>
+		</div>
 	<?php endif; ?>
 
 	<form method="post">

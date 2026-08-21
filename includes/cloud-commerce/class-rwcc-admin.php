@@ -45,6 +45,7 @@ class RWCC_Admin {
 
 		$settings = RWCC_Settings::from_wordpress();
 		$notice   = '';
+		$gaps     = RWCC_Settings::catalogue_gaps( $settings->all() );
 
 		if ( isset( $_POST['rwcc_save'] ) && check_admin_referer( 'rwcc_settings' ) ) {
 			$current = $settings->all();
@@ -71,6 +72,7 @@ class RWCC_Admin {
 
 			RWCC_Settings::save( $current );
 			$settings = RWCC_Settings::from_wordpress();
+			$gaps     = RWCC_Settings::catalogue_gaps( $settings->all() );
 			$notice   = __( 'Decision Cloud commerce settings saved.', 'reactwoo-api-manager' );
 		}
 

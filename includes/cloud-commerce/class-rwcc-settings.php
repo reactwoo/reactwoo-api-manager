@@ -112,6 +112,75 @@ class RWCC_Settings {
 	}
 
 	/**
+	 * Keys that must never be filled from an operator catalogue script.
+	 *
+	 * @return string[]
+	 */
+	public static function secret_keys() {
+		return array( 'webhook_secret', 'handoff_secret', 'reconcile_token' );
+	}
+
+	/**
+	 * Product-map keys required for upgrade credit and covered-SKU detection.
+	 *
+	 * @return string[]
+	 */
+	public static function catalogue_keys() {
+		return array(
+			'product_decision_cloud',
+			'product_starter',
+			'product_growth',
+			'product_scale',
+			'product_geocore_pro',
+			'product_geo_commerce',
+			'product_geo_optimise',
+		);
+	}
+
+	/**
+	 * Merge fill values into empty keys only. Never copies secrets. Never overwrites a non-empty setting.
+	 *
+	 * @param array $current Stored settings.
+	 * @param array $fill    Candidate values (product IDs, origin).
+	 * @return array
+	 */
+	public static function merge_empty( array $current, array $fill ) {
+		$out     = array_merge( self::defaults(), $current );
+		$secrets = self::secret_keys();
+		foreach ( $fill as $key => $value ) {
+			if ( in_array( $key, $secrets, true ) ) {
+				continue;
+			}
+			if ( $key === 'allow_http_local' ) {
+				continue;
+			}
+			$incoming = is_bool( $value ) ? $value : trim( (string) $value );
+			if ( $incoming === '' || $incoming === false ) {
+				continue;
+			}
+			$existing = isset( $out[ $key ] ) ? trim( (string) $out[ $key ] ) : '';
+			if ( $existing === '' ) {
+				$out[ $key ] = is_bool( $value ) ? $value : (string) $incoming;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * @param array $values Settings.
+	 * @return string[] Empty catalogue keys.
+	 */
+	public static function catalogue_gaps( array $values ) {
+		$gaps = array();
+		foreach ( self::catalogue_keys() as $key ) {
+			if ( trim( (string) ( isset( $values[ $key ] ) ? $values[ $key ] : '' ) ) === '' ) {
+				$gaps[] = $key;
+			}
+		}
+		return $gaps;
+	}
+
+	/**
 	 * Persist non-constant values. Autoload false so secrets are not dumped on every request.
 	 *
 	 * @param array $values Values to store.
