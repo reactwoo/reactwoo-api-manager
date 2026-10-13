@@ -14,8 +14,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class RWCC_Coverage {
 
 	const SLUG_ALIASES = array(
-		'geo-elementor'      => 'reactwoo-geocore-pro',
-		'geoelementor'       => 'reactwoo-geocore-pro',
 		'reactwoo-geo-ai'    => 'reactwoo-geo-optimise',
 		'geo-ai'             => 'reactwoo-geo-optimise',
 		'geo_ai'             => 'reactwoo-geo-optimise',

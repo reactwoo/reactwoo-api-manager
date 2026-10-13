@@ -563,7 +563,8 @@ rw_assert( $snapshot['provisioning_id'] === $first_prov, 'Reconcile snapshot inc
 rw_assert( ! isset( $snapshot['consumer_key'] ), 'Reconcile snapshot has no WooCommerce REST credentials' );
 rw_assert( array_key_exists( 'billing_overlap', $snapshot ), 'Reconcile snapshot reports billing overlap state' );
 
-rw_assert( RWCC_Coverage::sku_covered( 'starter', 'geo-elementor' ), 'Starter covers Geo Core Pro alias' );
+rw_assert( RWCC_Coverage::sku_covered( 'starter', 'reactwoo-geocore-pro' ), 'Starter covers Geo Core Pro' );
+rw_assert( ! RWCC_Coverage::sku_covered( 'starter', 'geo-elementor' ), 'Starter does not cover retired GeoElementor' );
 rw_assert( ! RWCC_Coverage::sku_covered( 'starter', 'reactwoo-geo-commerce' ), 'Starter does not cover Geo Commerce' );
 rw_assert( RWCC_Coverage::sku_covered( 'growth', 'reactwoo-geo-ai' ), 'Growth covers Geo Optimise alias' );
 
