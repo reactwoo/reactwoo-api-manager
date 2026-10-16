@@ -22,6 +22,7 @@ class ReactWoo_Product_Meta {
         
         // Handle variable subscription variations
         add_action( 'woocommerce_save_product_variation', array( $this, 'save_variation_license_type_field' ), 10, 2 );
+        add_action( 'woocommerce_product_after_variable_attributes', array( $this, 'render_variation_plan_field' ), 10, 3 );
     }
 
     /**
@@ -47,6 +48,7 @@ class ReactWoo_Product_Meta {
                 __( 'Error loading license types: %s', 'reactwoo-api-manager' ), 
                 $packages->get_error_message() 
             ) . '</p>';
+            $this->render_maintenance_plan_field( $post->ID );
             echo '</div>';
             return;
         }
@@ -61,6 +63,7 @@ class ReactWoo_Product_Meta {
             'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
             'value' => $selected_package_id,
         ) );
+        $this->render_maintenance_plan_field( $post->ID );
         $this->render_plugin_slug_field( $post->ID );
         echo '</div>';
     }
@@ -101,6 +104,51 @@ class ReactWoo_Product_Meta {
             delete_post_meta( $post_id, '_reactwoo_license_package_id' );
         }
         $this->save_plugin_slug_field( $post_id );
+        $this->save_maintenance_plan_field( $post_id );
+    }
+
+    /**
+     * Maintenance plan identity. Empty is stored as none.
+     *
+     * @param int $post_id Product ID.
+     */
+    private function render_maintenance_plan_field( $post_id ) {
+        $selected = (string) get_post_meta( $post_id, '_rw_maintenance_plan_key', true );
+        if ( ! in_array( $selected, array( 'essential', 'standard', 'business' ), true ) ) {
+            $selected = 'none';
+        }
+
+        woocommerce_wp_select(
+            array(
+                'id'          => '_rw_maintenance_plan_key',
+                'label'       => __( 'Maintenance plan', 'reactwoo-api-manager' ),
+                'description' => __( 'Identifies this WooCommerce subscription as a ReactWoo Maintenance plan. This is separate from software licensing.', 'reactwoo-api-manager' ),
+                'desc_tip'    => true,
+                'options'     => array(
+                    'none'      => __( 'None', 'reactwoo-api-manager' ),
+                    'essential' => __( 'Essential', 'reactwoo-api-manager' ),
+                    'standard'  => __( 'Standard', 'reactwoo-api-manager' ),
+                    'business'  => __( 'Business', 'reactwoo-api-manager' ),
+                ),
+                'value'       => $selected,
+            )
+        );
+    }
+
+    /**
+     * @param int $post_id Product ID.
+     */
+    private function save_maintenance_plan_field( $post_id ) {
+        if ( ! isset( $_POST['_rw_maintenance_plan_key'] ) ) {
+            return;
+        }
+
+        $plan = sanitize_key( wp_unslash( $_POST['_rw_maintenance_plan_key'] ) );
+        if ( ! in_array( $plan, array( 'essential', 'standard', 'business' ), true ) ) {
+            $plan = 'none';
+        }
+
+        update_post_meta( $post_id, '_rw_maintenance_plan_key', $plan );
     }
 
     /**
@@ -160,6 +208,53 @@ class ReactWoo_Product_Meta {
                 delete_post_meta( $variation_id, '_reactwoo_license_package_id' );
             }
         }
+
+        $plan_key = 'variable_rw_maintenance_plan_key';
+        if ( isset( $_POST[ $plan_key ] ) && is_array( $_POST[ $plan_key ] ) && isset( $_POST[ $plan_key ][ $loop ] ) ) {
+            $plan = sanitize_key( wp_unslash( $_POST[ $plan_key ][ $loop ] ) );
+            if ( in_array( $plan, array( 'essential', 'standard', 'business' ), true ) ) {
+                update_post_meta( $variation_id, '_rw_maintenance_plan_key', $plan );
+            } else {
+                delete_post_meta( $variation_id, '_rw_maintenance_plan_key' );
+            }
+        }
+    }
+
+    /**
+     * Variation override. Empty inherits the parent plan.
+     *
+     * @param int     $loop
+     * @param array   $variation_data
+     * @param WP_Post $variation
+     */
+    public function render_variation_plan_field( $loop, $variation_data, $variation ) {
+        unset( $variation_data );
+        $product = wc_get_product( $variation->ID );
+        if ( ! $product || ! $product->is_type( 'subscription_variation' ) ) {
+            return;
+        }
+
+        $selected = (string) get_post_meta( $variation->ID, '_rw_maintenance_plan_key', true );
+        if ( ! in_array( $selected, array( 'essential', 'standard', 'business' ), true ) ) {
+            $selected = '';
+        }
+
+        woocommerce_wp_select(
+            array(
+                'id'            => 'variable_rw_maintenance_plan_key[' . $loop . ']',
+                'name'          => 'variable_rw_maintenance_plan_key[' . $loop . ']',
+                'label'         => __( 'Maintenance plan', 'reactwoo-api-manager' ),
+                'description'   => __( 'Leave as Inherit to use the parent product plan. This is separate from software licensing.', 'reactwoo-api-manager' ),
+                'value'         => $selected,
+                'options'       => array(
+                    ''          => __( 'Inherit', 'reactwoo-api-manager' ),
+                    'essential' => __( 'Essential', 'reactwoo-api-manager' ),
+                    'standard'  => __( 'Standard', 'reactwoo-api-manager' ),
+                    'business'  => __( 'Business', 'reactwoo-api-manager' ),
+                ),
+                'wrapper_class' => 'form-row form-row-full',
+            )
+        );
     }
 
     /**
@@ -210,6 +305,7 @@ class ReactWoo_Product_Meta {
                             'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
                             'value' => $selected_package_id,
                         ) );
+                        $this->render_maintenance_plan_field( $post->ID );
                         $this->render_plugin_slug_field( $post->ID );
 
                         if ( $selected_package_id ) {
