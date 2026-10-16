@@ -28,6 +28,12 @@ foreach ( $required_hooks as $hook ) {
 }
 
 rw_assert( strpos( $handler, 'create_license_for_subscription' ) !== false, 'Standalone purchase still generates licences' );
+$licence_fn = strpos( $handler, 'function create_license_for_subscription' );
+$licence_body = substr( $handler, $licence_fn, 5000 );
+$maint_pos = strpos( $licence_body, 'maintenance_entitlement_slugs' );
+$package_pos = strpos( $licence_body, '_reactwoo_license_package_id' );
+rw_assert( false !== $maint_pos && false !== $package_pos && $maint_pos < $package_pos, 'Maintenance entitlements are resolved before a licence package id' );
+rw_assert( false !== strpos( $licence_body, 'foreach ( $maintenance_slugs as $maintenance_slug )' ), 'Bundled slugs are provisioned one at a time' );
 rw_assert( strpos( $handler, 'ReactWoo_License_Server_API' ) !== false, 'Licence generation still uses the licence server API' );
 rw_assert( strpos( $handler, 'reactwoo_license_provision_plan_code' ) !== false, 'Licence provision accepts a generic plan_code filter' );
 rw_assert( strpos( $handler, 'rw_cloud_' ) === false, 'Licence handler does not write Cloud order meta' );

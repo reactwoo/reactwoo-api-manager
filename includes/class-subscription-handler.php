@@ -327,12 +327,30 @@ class ReactWoo_Subscription_Handler {
 
         // Get package ID from subscription items
         $package_id = null;
+        $handled_maintenance = false;
         foreach ( $items as $item ) {
             $product = $item->get_product();
             // Check for subscription product types (including variations)
             if ( $product && ( $product->is_type( 'subscription' ) || $product->is_type( 'subscription_variation' ) ) ) {
-                // For variable subscriptions, check variation first, then parent
                 $product_id = $product->get_id();
+                $maintenance_slugs = $this->maintenance_entitlement_slugs( $product );
+                if ( is_array( $maintenance_slugs ) ) {
+                    $handled_maintenance = true;
+                    foreach ( $maintenance_slugs as $maintenance_slug ) {
+                        $this->provision_entitlement_slug( $subscription, $order, $maintenance_slug, $correlation_id );
+                    }
+                    $this->log_debug(
+                        'create_license_for_subscription: maintenance entitlements resolved',
+                        array(
+                            'correlation_id'  => $correlation_id,
+                            'subscription_id' => $subscription->get_id(),
+                            'product_id'      => $product_id,
+                            'slug_count'      => count( $maintenance_slugs ),
+                        )
+                    );
+                    continue;
+                }
+                // For variable subscriptions, check variation first, then parent
                 if ( $product->is_type( 'subscription_variation' ) ) {
                     $variation_id = $product_id;
                     $package_id = get_post_meta( $variation_id, '_reactwoo_license_package_id', true );
@@ -394,6 +412,16 @@ class ReactWoo_Subscription_Handler {
                 }
 
                 $order_product_id = $order_product->get_id();
+                $maintenance_slugs = $this->maintenance_entitlement_slugs( $order_product );
+                if ( is_array( $maintenance_slugs ) ) {
+                    if ( $handled_maintenance ) {
+                        continue;
+                    }
+                    foreach ( $maintenance_slugs as $maintenance_slug ) {
+                        $this->provision_entitlement_slug( $subscription, $order, $maintenance_slug, $correlation_id );
+                    }
+                    continue;
+                }
                 $order_package_id = get_post_meta( $order_product_id, '_reactwoo_license_package_id', true );
 
                 $this->log_debug(
@@ -854,6 +882,93 @@ class ReactWoo_Subscription_Handler {
                 $order->update_meta_data( '_reactwoo_domain', $domain );
                 $order->save();
             }
+        }
+    }
+
+    /**
+     * Maintenance plans provision only reactwoo_product_entitlements.
+     * An empty list performs no licence call, even if a package id is stored on the product.
+     *
+     * @param WC_Product $product Product.
+     * @return array<int,string>|null Null when the product is not a Maintenance plan.
+     */
+    private function maintenance_entitlement_slugs( $product ) {
+        if ( ! $product || ! method_exists( $product, 'get_id' ) ) {
+            return null;
+        }
+
+        $product_id = (int) $product->get_id();
+        $key        = (string) get_post_meta( $product_id, '_rw_maintenance_plan_key', true );
+        if ( ! in_array( $key, array( 'essential', 'standard', 'business' ), true ) && method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
+            $key = (string) get_post_meta( (int) $product->get_parent_id(), '_rw_maintenance_plan_key', true );
+        }
+        if ( ! in_array( $key, array( 'essential', 'standard', 'business' ), true ) ) {
+            return null;
+        }
+
+        $slugs = array();
+        if ( class_exists( 'RW_Maintenance_Plans' ) ) {
+            $resolved = RW_Maintenance_Plans::resolve( $key );
+            $slugs    = isset( $resolved['reactwoo_product_entitlements'] ) ? (array) $resolved['reactwoo_product_entitlements'] : array();
+        }
+        if ( function_exists( 'apply_filters' ) ) {
+            $slugs = apply_filters( 'reactwoo_maintenance_product_entitlements', $slugs, $key, $product_id );
+        }
+
+        $blocked = class_exists( 'RW_Maintenance_Plans' ) ? RW_Maintenance_Plans::third_party_premium_entitlements() : array();
+        $clean   = array();
+        foreach ( (array) $slugs as $slug ) {
+            $slug = sanitize_key( (string) $slug );
+            if ( '' === $slug || in_array( $slug, $blocked, true ) ) {
+                continue;
+            }
+            $clean[] = $slug;
+        }
+
+        return array_values( array_unique( $clean ) );
+    }
+
+    /**
+     * Provision one bundled ReactWoo package. Not used while Maintenance entitlements are empty.
+     *
+     * @param WC_Subscription $subscription Subscription.
+     * @param WC_Order        $order        Order.
+     * @param string          $slug         Package slug.
+     * @param string          $correlation_id Correlation id.
+     */
+    private function provision_entitlement_slug( $subscription, $order, $slug, $correlation_id ) {
+        $slug = sanitize_key( (string) $slug );
+        if ( '' === $slug ) {
+            return;
+        }
+
+        $api     = new ReactWoo_License_Server_API();
+        $license = $api->provision_license_v1(
+            array(
+                'customer_email'     => $order->get_billing_email(),
+                'customer_name'      => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
+                'package_slug'       => $slug,
+                'wc_subscription_id' => $subscription->get_id(),
+                'wc_order_id'        => $order->get_id(),
+                'status'             => 'active',
+                'domain'             => $this->get_domain_from_order( $order ),
+                'correlation_id'     => $correlation_id,
+                'currency'           => $subscription->get_currency(),
+                'start_date'         => $subscription->get_date( 'start' ) ? $subscription->get_date( 'start' ) : current_time( 'mysql' ),
+                'billing_period'     => $subscription->get_billing_period(),
+                'billing_interval'   => $subscription->get_billing_interval(),
+            )
+        );
+
+        if ( is_wp_error( $license ) ) {
+            $this->log_debug(
+                'create_license_for_subscription: bundled entitlement was not provisioned',
+                array(
+                    'correlation_id' => $correlation_id,
+                    'package_slug'   => $slug,
+                    'error'          => $license->get_error_message(),
+                )
+            );
         }
     }
 
