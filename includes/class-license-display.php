@@ -391,7 +391,13 @@ class ReactWoo_License_Display {
 		// Keep Dashboard always — removing it can make WooCommerce redirect the
 		// account root and contribute to redirect loops with /license/.
 		$rebuilt = array();
-		$rebuilt['license'] = __( 'Products & licences', 'reactwoo-api-manager' );
+		// Menu only: hide when the user has no licensed items; the endpoint stays reachable by URL.
+		$records = function_exists( 'reactwoo_api_manager_get_customer_account_records' ) && is_user_logged_in()
+			? reactwoo_api_manager_get_customer_account_records( get_current_user_id() )
+			: array();
+		if ( is_array( $records ) && ! empty( $records ) ) {
+			$rebuilt['license'] = __( 'Products & licences', 'reactwoo-api-manager' );
+		}
 
 		foreach ( $items as $key => $label ) {
 			if ( 'license' === $key ) {

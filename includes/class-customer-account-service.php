@@ -71,7 +71,7 @@ class ReactWoo_Customer_Account_Service {
 			} catch ( Exception $e ) {
 				$record = null;
 			}
-			if ( $record ) {
+			if ( $record && self::is_licensed_record( $record ) ) {
 				$records[] = $record;
 			}
 		}
@@ -182,6 +182,31 @@ class ReactWoo_Customer_Account_Service {
 			default:
 				return $license_key !== '' ? 'inactive' : 'pending';
 		}
+	}
+
+	/**
+	 * Products & licences lists licensed items only. Subscriptions without a
+	 * licence (maintenance plans, hosting) live under Subscriptions/Maintenance.
+	 *
+	 * @param array $record Built record.
+	 * @return bool
+	 */
+	private static function is_licensed_record( $record ) {
+		if ( ! is_array( $record ) ) {
+			return false;
+		}
+
+		$product_id = isset( $record['product_id'] ) ? (int) $record['product_id'] : 0;
+		$excluded   = array_map( 'intval', (array) apply_filters( 'reactwoo_api_manager_unlicensed_product_ids', array( 3654, 3657, 3660 ) ) );
+		if ( $product_id && function_exists( 'wc_get_product' ) ) {
+			$product   = wc_get_product( $product_id );
+			$parent_id = $product && method_exists( $product, 'get_parent_id' ) ? (int) $product->get_parent_id() : 0;
+			if ( in_array( $product_id, $excluded, true ) || ( $parent_id && in_array( $parent_id, $excluded, true ) ) ) {
+				return false;
+			}
+		}
+
+		return ! empty( $record['license_id'] ) || ! empty( $record['key_available'] );
 	}
 
 	/**
