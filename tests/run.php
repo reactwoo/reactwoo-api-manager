@@ -101,6 +101,7 @@ require_once __DIR__ . '/isolation.php';
 require_once __DIR__ . '/licensing-regression.php';
 require_once __DIR__ . '/companion-deactivated.php';
 require_once __DIR__ . '/cloud-commerce.php';
+require_once __DIR__ . '/licensed-account-menu.php';
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";
