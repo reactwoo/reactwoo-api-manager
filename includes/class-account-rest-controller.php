@@ -107,7 +107,8 @@ class ReactWoo_Account_REST_Controller {
 			return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
 		}
 
-		$key = ReactWoo_Customer_Account_Service::get_instance()->get_owned_license_key( $subscription );
+		$package = $request->get_param( 'package' );
+		$key = ReactWoo_Customer_Account_Service::get_instance()->get_owned_license_key( $subscription, $package );
 		if ( is_wp_error( $key ) ) {
 			return $key;
 		}

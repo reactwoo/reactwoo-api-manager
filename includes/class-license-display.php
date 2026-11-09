@@ -471,9 +471,21 @@ class ReactWoo_License_Display {
 		}
 
 		$account_url = wc_get_account_endpoint_url( 'license' );
+		$entries     = isset( $license['entries'] ) ? $license['entries'] : array();
+		$multiple    = count( $entries ) > 1;
 		echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
-		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Your licence', 'reactwoo-api-manager' ) . '</h2>';
-		echo '<p>' . esc_html__( 'Your licence key is ready in My Account → Products & licences.', 'reactwoo-api-manager' ) . '</p>';
+		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html( $multiple ? __( 'Your licences', 'reactwoo-api-manager' ) : __( 'Your licence', 'reactwoo-api-manager' ) ) . '</h2>';
+		if ( $multiple ) {
+			echo '<p>' . esc_html__( 'This order includes one licence key for each product. Copy the full keys from My Account → Products & licences.', 'reactwoo-api-manager' ) . '</p>';
+			echo '<ul style="margin:0 0 12px 18px;padding:0;">';
+			foreach ( $entries as $entry ) {
+				$masked = ReactWoo_Customer_Account_Service::mask_license_key( $entry['key'] );
+				echo '<li><strong>' . esc_html( $entry['label'] ) . ':</strong> <code>' . esc_html( $masked ) . '</code></li>';
+			}
+			echo '</ul>';
+		} else {
+			echo '<p>' . esc_html__( 'Your licence key is ready in My Account → Products & licences.', 'reactwoo-api-manager' ) . '</p>';
+		}
 		if ( ! empty( $license['domain'] ) ) {
 			echo '<p><strong>' . esc_html__( 'Registered website', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
 		}
@@ -511,31 +523,12 @@ class ReactWoo_License_Display {
 			return;
 		}
 
-		$key    = (string) $subscription->get_meta( '_reactwoo_license_key', true );
-		$domain = (string) $subscription->get_meta( '_reactwoo_license_domain', true );
-		if ( $domain === '' ) {
-			$parent = $subscription->get_parent();
-			if ( $parent instanceof WC_Order ) {
-				$domain = (string) $parent->get_meta( '_reactwoo_domain', true );
-			}
-		}
-		if ( $key === '' ) {
-			$parent = $subscription->get_parent();
-			if ( $parent instanceof WC_Order ) {
-				$key = (string) $parent->get_meta( '_reactwoo_license_key', true );
-			}
-		}
-		if ( $key === '' ) {
+		$license = $this->get_local_order_license( $subscription );
+		if ( ! $license ) {
 			return;
 		}
-
-		$this->print_masked_license_block(
-			array(
-				'key'             => $key,
-				'domain'          => $domain,
-				'subscription_id' => $subscription->get_id(),
-			)
-		);
+		$license['subscription_id'] = $subscription->get_id();
+		$this->print_masked_license_block( $license );
 	}
 
 	/**
@@ -560,9 +553,23 @@ class ReactWoo_License_Display {
 			return $fields;
 		}
 
+		$labels = array();
+		if ( ! empty( $license['entries'] ) && count( $license['entries'] ) > 1 ) {
+			foreach ( $license['entries'] as $entry ) {
+				if ( ! empty( $entry['label'] ) ) {
+					$labels[] = $entry['label'];
+				}
+			}
+		}
 		$fields['reactwoo_license_key'] = array(
 			'label' => __( 'Licence', 'reactwoo-api-manager' ),
-			'value' => __( 'Available in My Account → Products & licences (secure copy).', 'reactwoo-api-manager' ),
+			'value' => $labels
+				? sprintf(
+					/* translators: %s: comma-separated product names */
+					__( 'Licences for %s are in My Account → Products & licences (secure copy).', 'reactwoo-api-manager' ),
+					implode( ', ', $labels )
+				)
+				: __( 'Available in My Account → Products & licences (secure copy).', 'reactwoo-api-manager' ),
 		);
 
 		if ( ! empty( $license['domain'] ) ) {
@@ -617,6 +624,16 @@ class ReactWoo_License_Display {
 			}
 		}
 
+		$entries = $this->license_entries_from_object( $subscription );
+		if ( ! $entries ) {
+			$entries = array(
+				array(
+					'label' => '',
+					'key'   => $key,
+				),
+			);
+		}
+
 		nocache_headers();
 		header( 'Cache-Control: no-store, private' );
 		header( 'Content-Type: text/plain; charset=utf-8' );
@@ -625,7 +642,14 @@ class ReactWoo_License_Display {
 		echo "ReactWoo Licence Details\n\n";
 		echo "Subscription ID: {$subscription_id}\n";
 		echo 'Registered website: ' . ( $domain !== '' ? $domain : '(not set)' ) . "\n\n";
-		echo "Licence key:\n{$key}\n\n";
+		if ( count( $entries ) > 1 ) {
+			foreach ( $entries as $entry ) {
+				$label = '' !== $entry['label'] ? $entry['label'] : __( 'Licence', 'reactwoo-api-manager' );
+				echo $label . ":\n" . $entry['key'] . "\n\n";
+			}
+		} else {
+			echo "Licence key:\n{$key}\n\n";
+		}
 		echo "Keep this file private. You can also copy your key from My Account → Products & licences.\n";
 		exit;
 	}
@@ -637,17 +661,78 @@ class ReactWoo_License_Display {
 	 * @return array{key:string,domain:string}|null
 	 */
 	private function get_local_order_license( $order ) {
-		$key    = (string) $order->get_meta( '_reactwoo_license_key', true );
-		$domain = (string) $order->get_meta( '_reactwoo_license_domain', true );
+		$entries = $this->license_entries_from_object( $order );
+		$domain  = (string) $order->get_meta( '_reactwoo_license_domain', true );
 		if ( $domain === '' ) {
 			$domain = (string) $order->get_meta( '_reactwoo_domain', true );
 		}
-		if ( $key === '' ) {
+		if ( method_exists( $order, 'get_parent' ) ) {
+			$parent = $order->get_parent();
+			if ( is_object( $parent ) && method_exists( $parent, 'get_meta' ) ) {
+				if ( ! $entries ) {
+					$entries = $this->license_entries_from_object( $parent );
+				}
+				if ( $domain === '' ) {
+					$domain = (string) $parent->get_meta( '_reactwoo_license_domain', true );
+				}
+				if ( $domain === '' ) {
+					$domain = (string) $parent->get_meta( '_reactwoo_domain', true );
+				}
+			}
+		}
+		if ( ! $entries ) {
 			return null;
 		}
 		return array(
-			'key'    => $key,
-			'domain' => $domain,
+			'key'     => $entries[0]['key'],
+			'domain'  => $domain,
+			'entries' => $entries,
+		);
+	}
+
+	/**
+	 * Stored keys for an order or subscription. One entry per package.
+	 *
+	 * @param object $object Order or subscription.
+	 * @return array<int,array{slug:string,label:string,key:string}>
+	 */
+	private function license_entries_from_object( $object ) {
+		if ( ! is_object( $object ) || ! method_exists( $object, 'get_meta' ) ) {
+			return array();
+		}
+		$keys   = $object->get_meta( '_reactwoo_license_keys', true );
+		$labels = $object->get_meta( '_reactwoo_license_key_labels', true );
+		if ( ! is_array( $labels ) ) {
+			$labels = array();
+		}
+		$entries = array();
+		if ( is_array( $keys ) ) {
+			foreach ( $keys as $slug => $key ) {
+				$key = (string) $key;
+				if ( '' === $key ) {
+					continue;
+				}
+				$label = isset( $labels[ $slug ] ) ? trim( (string) $labels[ $slug ] ) : '';
+				$entries[] = array(
+					'slug'  => (string) $slug,
+					'label' => '' !== $label ? $label : (string) $slug,
+					'key'   => $key,
+				);
+			}
+		}
+		if ( $entries ) {
+			return $entries;
+		}
+		$key = (string) $object->get_meta( '_reactwoo_license_key', true );
+		if ( '' === $key ) {
+			return array();
+		}
+		return array(
+			array(
+				'slug'  => '',
+				'label' => '',
+				'key'   => $key,
+			),
 		);
 	}
 
@@ -655,16 +740,34 @@ class ReactWoo_License_Display {
 	 * @param array $license License data with key/domain.
 	 */
 	private function print_masked_license_block( $license ) {
-		if ( empty( $license['key'] ) ) {
+		$entries = array();
+		if ( ! empty( $license['entries'] ) && is_array( $license['entries'] ) ) {
+			$entries = $license['entries'];
+		} elseif ( ! empty( $license['key'] ) ) {
+			$entries = array(
+				array(
+					'label' => '',
+					'key'   => $license['key'],
+				),
+			);
+		}
+		if ( ! $entries ) {
 			return;
 		}
 
-		$masked = ReactWoo_Customer_Account_Service::mask_license_key( $license['key'] );
+		$multiple    = count( $entries ) > 1;
 		$account_url = wc_get_account_endpoint_url( 'license' );
 
 		echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
-		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Your licence', 'reactwoo-api-manager' ) . '</h2>';
-		echo '<p><strong>' . esc_html__( 'Licence key', 'reactwoo-api-manager' ) . ':</strong> <code>' . esc_html( $masked ) . '</code></p>';
+		echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html( $multiple ? __( 'Your licences', 'reactwoo-api-manager' ) : __( 'Your licence', 'reactwoo-api-manager' ) ) . '</h2>';
+		foreach ( $entries as $entry ) {
+			$masked = ReactWoo_Customer_Account_Service::mask_license_key( $entry['key'] );
+			if ( $multiple && ! empty( $entry['label'] ) ) {
+				echo '<p><strong>' . esc_html( $entry['label'] ) . '</strong><br><code>' . esc_html( $masked ) . '</code></p>';
+			} else {
+				echo '<p><strong>' . esc_html__( 'Licence key', 'reactwoo-api-manager' ) . ':</strong> <code>' . esc_html( $masked ) . '</code></p>';
+			}
+		}
 		if ( ! empty( $license['domain'] ) ) {
 			echo '<p><strong>' . esc_html__( 'Registered website', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $license['domain'] ) . '</p>';
 		}
