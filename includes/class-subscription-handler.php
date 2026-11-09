@@ -13,6 +13,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ReactWoo_Subscription_Handler {
 
     /**
+     * One website for a maintenance plan or support pack.
+     * Stored on the order line item, and on the subscription for a maintenance plan.
+     */
+    const SERVICE_DOMAIN_META = '_rw_service_domain';
+
+    /**
      * Constructor
      */
     public function __construct() {
@@ -35,9 +41,20 @@ class ReactWoo_Subscription_Handler {
         add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'save_checkout_domain_field' ), 10, 1 );
         add_action( 'woocommerce_after_order_notes', array( $this, 'add_domain_field_to_checkout' ) );
         add_action( 'woocommerce_checkout_process', array( $this, 'validate_domain_field' ) );
-        
+
+        // Service website: one field per maintenance or support line. Not the licence domain.
+        add_action( 'woocommerce_after_order_notes', array( $this, 'add_service_website_fields_to_checkout' ), 11 );
+        add_action( 'woocommerce_checkout_process', array( $this, 'validate_service_website_fields' ), 11 );
+        add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'save_checkout_service_domain_line_item' ), 10, 4 );
+        add_action( 'woocommerce_checkout_subscription_created', array( $this, 'save_service_domain_on_new_subscription' ), 10, 3 );
+        add_action( 'wcs_renewal_order_created', array( $this, 'copy_service_domain_to_renewal_order' ), 10, 2 );
+        add_action( 'woocommerce_subscription_item_switched', array( $this, 'keep_service_domain_on_switched_item' ), 10, 4 );
+
         // Add domain field to order admin
         add_action( 'woocommerce_admin_order_data_after_billing_address', array( $this, 'display_order_domain_field' ), 10, 1 );
+        add_action( 'woocommerce_admin_order_data_after_billing_address', array( $this, 'display_service_domain_admin' ), 15, 1 );
+        add_action( 'woocommerce_after_order_itemmeta', array( $this, 'display_service_domain_order_item' ), 10, 3 );
+        add_filter( 'woocommerce_hidden_order_itemmeta', array( $this, 'hide_service_domain_item_meta' ) );
         add_action( 'woocommerce_process_shop_order_meta', array( $this, 'save_order_domain_field' ), 10, 1 );
 
         add_action( 'wp_trash_post', array( $this, 'handle_order_trashed' ), 10, 1 );
@@ -872,6 +889,10 @@ class ReactWoo_Subscription_Handler {
             return false;
         }
 
+        if ( $this->product_is_support_pack( $product ) ) {
+            return false;
+        }
+
         return $this->license_package_id_for_product( $product ) > 0;
     }
 
@@ -943,6 +964,86 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
+     * Domain pattern used by licence checkout and service-website checkout.
+     *
+     * @return string
+     */
+    private function checkout_domain_pattern() {
+        return '/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/';
+    }
+
+    /**
+     * Sanitise a checkout website the same way as the licence domain check.
+     * An invalid value becomes an empty string and is not stored.
+     *
+     * @param mixed $raw Posted value.
+     * @return string
+     */
+    public function normalize_checkout_domain( $raw ) {
+        $domain = sanitize_text_field( (string) $raw );
+        if ( '' === $domain || ! preg_match( $this->checkout_domain_pattern(), $domain ) ) {
+            return '';
+        }
+        return $domain;
+    }
+
+    /**
+     * Maintenance plan by product meta or the known plan ids, including variations.
+     *
+     * @param object|null $product Product.
+     * @return bool
+     */
+    public function product_is_maintenance_plan( $product ) {
+        if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) {
+            return false;
+        }
+        if ( is_array( $this->maintenance_entitlement_slugs( $product ) ) ) {
+            return true;
+        }
+        return $this->product_id_in_list( $product, array( 3654, 3657, 3660 ) );
+    }
+
+    /**
+     * Support packs 3663–3666, including a variation of one of those parents.
+     *
+     * @param object|null $product Product.
+     * @return bool
+     */
+    public function product_is_support_pack( $product ) {
+        if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) {
+            return false;
+        }
+        $ids = array( 3663, 3664, 3665, 3666 );
+        if ( function_exists( 'apply_filters' ) ) {
+            $ids = (array) apply_filters( 'reactwoo_api_manager_support_pack_product_ids', $ids );
+        }
+        return $this->product_id_in_list( $product, $ids );
+    }
+
+    /**
+     * Maintenance plans and support packs must be tied to one website.
+     * Hosting is not included.
+     *
+     * @param object|null $product Product.
+     * @return bool
+     */
+    public function product_needs_service_website( $product ) {
+        return $this->product_is_maintenance_plan( $product ) || $this->product_is_support_pack( $product );
+    }
+
+    /**
+     * @param object $product Product.
+     * @param array<int,mixed> $ids Product ids.
+     * @return bool
+     */
+    private function product_id_in_list( $product, $ids ) {
+        $ids        = array_map( 'intval', (array) $ids );
+        $product_id = (int) $product->get_id();
+        $parent_id  = method_exists( $product, 'get_parent_id' ) ? (int) $product->get_parent_id() : 0;
+        return in_array( $product_id, $ids, true ) || ( $parent_id && in_array( $parent_id, $ids, true ) );
+    }
+
+    /**
      * Add domain field to checkout
      */
     public function add_domain_field_to_checkout() {
@@ -977,7 +1078,7 @@ class ReactWoo_Subscription_Handler {
         } else {
             // Basic domain validation
             $domain = sanitize_text_field( $_POST['reactwoo_domain'] );
-            if ( ! preg_match( '/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/', $domain ) ) {
+            if ( ! preg_match( $this->checkout_domain_pattern(), $domain ) ) {
                 wc_add_notice( __( 'Please enter a valid domain name.', 'reactwoo-api-manager' ), 'error' );
             }
         }
@@ -1032,6 +1133,520 @@ class ReactWoo_Subscription_Handler {
                 $order->save();
             }
         }
+    }
+
+    /**
+     * Service lines that still need a website entered at checkout.
+     * Renewals and switches are omitted; they keep the stored site.
+     *
+     * One entry per cart line, so two plans can name two sites. The licence
+     * domain stays a separate field and is never written here.
+     *
+     * @param WC_Cart|object|null $cart Cart. Null uses the current cart.
+     * @return array<string,object>
+     */
+    public function cart_service_website_fields( $cart = null ) {
+        if ( null === $cart ) {
+            if ( function_exists( 'WC' ) && WC() && is_object( WC()->cart ) && method_exists( WC()->cart, 'get_cart' ) ) {
+                $cart = WC()->cart;
+            } else {
+                return array();
+            }
+        }
+
+        if ( ! is_object( $cart ) || ! method_exists( $cart, 'get_cart' ) ) {
+            return array();
+        }
+
+        $items = $cart->get_cart();
+        if ( ! is_array( $items ) ) {
+            return array();
+        }
+
+        $fields = array();
+        foreach ( $items as $key => $item ) {
+            if ( $this->cart_item_reuses_service_website( $item ) ) {
+                continue;
+            }
+            $product = $this->cart_item_product( $item );
+            if ( ! $this->product_needs_service_website( $product ) ) {
+                continue;
+            }
+            $fields[ (string) $key ] = $product;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Website fields for maintenance plans and support packs.
+     */
+    public function add_service_website_fields_to_checkout() {
+        $lines = $this->cart_service_website_fields();
+        if ( ! $lines ) {
+            return;
+        }
+
+        $checkout = WC()->checkout();
+        $multiple = count( $lines ) > 1;
+        foreach ( $lines as $key => $product ) {
+            $field_name = 'rw_service_domain[' . $key . ']';
+            $label      = __( 'Website for this service', 'reactwoo-api-manager' );
+            if ( $multiple ) {
+                $label = sprintf(
+                    /* translators: %s is the product name. */
+                    __( 'Website for this service (%s)', 'reactwoo-api-manager' ),
+                    $this->service_product_label( $product )
+                );
+            }
+            $description = $this->product_is_support_pack( $product )
+                ? __( 'This support applies to that one site.', 'reactwoo-api-manager' )
+                : __( 'This plan applies to that one site.', 'reactwoo-api-manager' );
+
+            echo '<div id="rw_service_domain_' . esc_attr( $key ) . '_field" class="rw-service-domain-field">';
+            woocommerce_form_field(
+                $field_name,
+                array(
+                    'type'        => 'text',
+                    'class'       => array( 'form-row-wide' ),
+                    'label'       => $label,
+                    'placeholder' => __( 'example.com', 'reactwoo-api-manager' ),
+                    'required'    => true,
+                    'description' => $description,
+                ),
+                $checkout->get_value( $field_name )
+            );
+            echo '</div>';
+        }
+    }
+
+    /**
+     * Require a website for each new maintenance or support line.
+     */
+    public function validate_service_website_fields() {
+        foreach ( $this->cart_service_website_fields() as $key => $product ) {
+            $label = $this->service_product_label( $product );
+            $raw   = $this->posted_service_domain_raw( $key );
+            if ( '' === trim( (string) $raw ) ) {
+                wc_add_notice(
+                    sprintf(
+                        /* translators: %s is the product name. */
+                        __( 'Please enter the website for %s.', 'reactwoo-api-manager' ),
+                        $label
+                    ),
+                    'error'
+                );
+                continue;
+            }
+            if ( '' === $this->normalize_checkout_domain( $raw ) ) {
+                wc_add_notice(
+                    sprintf(
+                        /* translators: %s is the product name. */
+                        __( 'Please enter a valid website for %s.', 'reactwoo-api-manager' ),
+                        $label
+                    ),
+                    'error'
+                );
+            }
+        }
+    }
+
+    /**
+     * Store the service website on the order line. Never copies the licence domain.
+     *
+     * @param WC_Order_Item_Product $item Cart line being saved.
+     * @param string                $cart_item_key Cart key.
+     * @param array<string,mixed>   $values Cart line.
+     * @param WC_Order              $order Order.
+     */
+    public function save_checkout_service_domain_line_item( $item, $cart_item_key, $values, $order ) {
+        unset( $order );
+        $product = $this->cart_item_product( $values );
+        if ( ! $this->product_needs_service_website( $product ) ) {
+            return;
+        }
+
+        if ( $this->cart_item_reuses_service_website( $values ) ) {
+            $domain = $this->stored_service_domain_for_cart_item( $values );
+        } else {
+            $domain = $this->normalize_checkout_domain( $this->posted_service_domain_raw( $cart_item_key ) );
+        }
+
+        if ( '' === $domain || ! is_object( $item ) || ! method_exists( $item, 'add_meta_data' ) ) {
+            return;
+        }
+
+        $item->add_meta_data( self::SERVICE_DOMAIN_META, $domain, true );
+    }
+
+    /**
+     * Copy maintenance websites onto the new subscription.
+     *
+     * Line item meta is kept for every service line. Subscription meta is set
+     * when every maintenance line on that subscription names the same site.
+     *
+     * @param WC_Subscription $subscription New subscription.
+     * @param WC_Order        $order Parent order.
+     * @param WC_Cart|mixed   $recurring_cart Recurring cart.
+     */
+    public function save_service_domain_on_new_subscription( $subscription, $order, $recurring_cart ) {
+        unset( $recurring_cart );
+        if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_items' ) ) {
+            return;
+        }
+
+        $from_order          = $this->service_domains_by_product( $order );
+        $maintenance_domains = array();
+
+        foreach ( $subscription->get_items() as $item ) {
+            if ( ! is_object( $item ) ) {
+                continue;
+            }
+            $product = method_exists( $item, 'get_product' ) ? $item->get_product() : null;
+            if ( ! $this->product_needs_service_website( $product ) ) {
+                continue;
+            }
+
+            $domain = method_exists( $item, 'get_meta' )
+                ? $this->normalize_checkout_domain( $item->get_meta( self::SERVICE_DOMAIN_META, true ) )
+                : '';
+            if ( '' === $domain ) {
+                $domain = $this->domain_for_product_ids( $from_order, $product, $item );
+            }
+            if ( '' === $domain ) {
+                continue;
+            }
+
+            if ( method_exists( $item, 'update_meta_data' ) ) {
+                $item->update_meta_data( self::SERVICE_DOMAIN_META, $domain );
+                if ( method_exists( $item, 'save' ) ) {
+                    $item->save();
+                }
+            }
+            if ( $this->product_is_maintenance_plan( $product ) ) {
+                $maintenance_domains[] = $domain;
+            }
+        }
+
+        $maintenance_domains = array_values( array_unique( $maintenance_domains ) );
+        if ( 1 === count( $maintenance_domains ) && method_exists( $subscription, 'update_meta_data' ) ) {
+            $subscription->update_meta_data( self::SERVICE_DOMAIN_META, $maintenance_domains[0] );
+            if ( method_exists( $subscription, 'save' ) ) {
+                $subscription->save();
+            }
+        }
+    }
+
+    /**
+     * Automatic renewals do not show checkout. Copy the stored site onto the renewal lines.
+     *
+     * @param WC_Order        $renewal_order Renewal order.
+     * @param WC_Subscription $subscription Subscription.
+     */
+    public function copy_service_domain_to_renewal_order( $renewal_order, $subscription ) {
+        $domain = $this->stored_service_domain_on_subscription( $subscription );
+        if ( '' === $domain || ! is_object( $renewal_order ) || ! method_exists( $renewal_order, 'get_items' ) ) {
+            return;
+        }
+
+        foreach ( $renewal_order->get_items() as $item ) {
+            if ( ! is_object( $item ) || ! method_exists( $item, 'update_meta_data' ) ) {
+                continue;
+            }
+            $product = method_exists( $item, 'get_product' ) ? $item->get_product() : null;
+            if ( ! $this->product_needs_service_website( $product ) ) {
+                continue;
+            }
+            $item->update_meta_data( self::SERVICE_DOMAIN_META, $domain );
+            if ( method_exists( $item, 'save' ) ) {
+                $item->save();
+            }
+        }
+    }
+
+    /**
+     * A switch keeps the site already stored on the subscription.
+     *
+     * @param WC_Order        $order Switch order.
+     * @param WC_Subscription $subscription Subscription.
+     * @param mixed           $add_line_item New line.
+     * @param mixed           $remove_line_item Previous line.
+     */
+    public function keep_service_domain_on_switched_item( $order, $subscription, $add_line_item, $remove_line_item ) {
+        unset( $order );
+        $domain = '';
+        if ( is_object( $remove_line_item ) && method_exists( $remove_line_item, 'get_meta' ) ) {
+            $domain = $this->normalize_checkout_domain( $remove_line_item->get_meta( self::SERVICE_DOMAIN_META, true ) );
+        }
+        if ( '' === $domain ) {
+            $domain = $this->stored_service_domain_on_subscription( $subscription );
+        }
+        if ( '' === $domain ) {
+            return;
+        }
+
+        if ( is_object( $add_line_item ) && method_exists( $add_line_item, 'update_meta_data' ) ) {
+            $add_line_item->update_meta_data( self::SERVICE_DOMAIN_META, $domain );
+            if ( method_exists( $add_line_item, 'save' ) ) {
+                $add_line_item->save();
+            }
+        }
+
+        $product = ( is_object( $add_line_item ) && method_exists( $add_line_item, 'get_product' ) ) ? $add_line_item->get_product() : null;
+        if ( $this->product_is_maintenance_plan( $product ) && is_object( $subscription ) && method_exists( $subscription, 'update_meta_data' ) ) {
+            $subscription->update_meta_data( self::SERVICE_DOMAIN_META, $domain );
+            if ( method_exists( $subscription, 'save' ) ) {
+                $subscription->save();
+            }
+        }
+    }
+
+    /**
+     * Admin order and subscription screen: the site a service is for.
+     *
+     * @param WC_Order $order Order or subscription.
+     */
+    public function display_service_domain_admin( $order ) {
+        $lines = $this->service_domain_rows( $order );
+        if ( ! $lines ) {
+            return;
+        }
+        echo '<div class="form-field form-field-wide rw-service-domain">';
+        echo '<p><strong>' . esc_html__( 'Website for this service', 'reactwoo-api-manager' ) . '</strong></p>';
+        foreach ( $lines as $line ) {
+            $text = '' !== $line['name'] ? $line['name'] . ': ' . $line['domain'] : $line['domain'];
+            echo '<p>' . esc_html( $text ) . '</p>';
+        }
+        echo '</div>';
+    }
+
+    /**
+     * Admin order item row.
+     *
+     * @param int                       $item_id Item id.
+     * @param WC_Order_Item_Product     $item Item.
+     * @param WC_Product|false|null     $product Product.
+     */
+    public function display_service_domain_order_item( $item_id, $item, $product ) {
+        unset( $item_id, $product );
+        if ( ! is_object( $item ) || ! method_exists( $item, 'get_meta' ) ) {
+            return;
+        }
+        $domain = $this->normalize_checkout_domain( $item->get_meta( self::SERVICE_DOMAIN_META, true ) );
+        if ( '' === $domain ) {
+            return;
+        }
+        echo '<div class="rw-service-domain"><strong>' . esc_html__( 'Website for this service:', 'reactwoo-api-manager' ) . '</strong> ' . esc_html( $domain ) . '</div>';
+    }
+
+    /**
+     * Keep the raw meta key out of customer-facing item meta.
+     *
+     * @param array<int,string> $keys Hidden keys.
+     * @return array<int,string>
+     */
+    public function hide_service_domain_item_meta( $keys ) {
+        $keys[] = self::SERVICE_DOMAIN_META;
+        return $keys;
+    }
+
+    /**
+     * @param array<string,mixed>|mixed $cart_item Cart line.
+     * @return bool
+     */
+    private function cart_item_reuses_service_website( $cart_item ) {
+        if ( ! is_array( $cart_item ) ) {
+            return false;
+        }
+        return ! empty( $cart_item['subscription_renewal'] ) || ! empty( $cart_item['subscription_switch'] );
+    }
+
+    /**
+     * @param string $cart_key Cart line key.
+     * @return string
+     */
+    private function posted_service_domain_raw( $cart_key ) {
+        if ( empty( $_POST['rw_service_domain'] ) || ! is_array( $_POST['rw_service_domain'] ) ) {
+            return '';
+        }
+        if ( ! isset( $_POST['rw_service_domain'][ $cart_key ] ) ) {
+            return '';
+        }
+        return (string) $_POST['rw_service_domain'][ $cart_key ];
+    }
+
+    /**
+     * @param object $product Product.
+     * @return string
+     */
+    private function service_product_label( $product ) {
+        if ( is_object( $product ) && method_exists( $product, 'get_name' ) ) {
+            $name = trim( (string) $product->get_name() );
+            if ( '' !== $name ) {
+                return $name;
+            }
+        }
+        if ( is_object( $product ) && method_exists( $product, 'get_id' ) ) {
+            return '#' . (int) $product->get_id();
+        }
+        return __( 'this service', 'reactwoo-api-manager' );
+    }
+
+    /**
+     * @param array<string,mixed> $cart_item Renewal or switch line.
+     * @return string
+     */
+    private function stored_service_domain_for_cart_item( $cart_item ) {
+        $subscription_id = 0;
+        if ( ! empty( $cart_item['subscription_renewal']['subscription_id'] ) ) {
+            $subscription_id = (int) $cart_item['subscription_renewal']['subscription_id'];
+        } elseif ( ! empty( $cart_item['subscription_switch']['subscription_id'] ) ) {
+            $subscription_id = (int) $cart_item['subscription_switch']['subscription_id'];
+        }
+        if ( ! $subscription_id || ! function_exists( 'wcs_get_subscription' ) ) {
+            return '';
+        }
+        $subscription = wcs_get_subscription( $subscription_id );
+        return $this->stored_service_domain_on_subscription( $subscription );
+    }
+
+    /**
+     * @param object|null $subscription Subscription.
+     * @return string
+     */
+    private function stored_service_domain_on_subscription( $subscription ) {
+        if ( ! is_object( $subscription ) ) {
+            return '';
+        }
+        if ( method_exists( $subscription, 'get_meta' ) ) {
+            $domain = $this->normalize_checkout_domain( $subscription->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' !== $domain ) {
+                return $domain;
+            }
+        }
+        if ( ! method_exists( $subscription, 'get_items' ) ) {
+            return '';
+        }
+        foreach ( $subscription->get_items() as $line ) {
+            if ( ! is_object( $line ) || ! method_exists( $line, 'get_meta' ) ) {
+                continue;
+            }
+            $domain = $this->normalize_checkout_domain( $line->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' !== $domain ) {
+                return $domain;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * @param WC_Order|object|null $order Order.
+     * @return array<int,string|null>
+     */
+    private function service_domains_by_product( $order ) {
+        $map = array();
+        if ( ! is_object( $order ) || ! method_exists( $order, 'get_items' ) ) {
+            return $map;
+        }
+        foreach ( $order->get_items() as $item ) {
+            if ( ! is_object( $item ) || ! method_exists( $item, 'get_meta' ) ) {
+                continue;
+            }
+            $domain = $this->normalize_checkout_domain( $item->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' === $domain ) {
+                continue;
+            }
+            $ids = array();
+            $product = method_exists( $item, 'get_product' ) ? $item->get_product() : null;
+            if ( is_object( $product ) && method_exists( $product, 'get_id' ) ) {
+                $ids[] = (int) $product->get_id();
+                if ( method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
+                    $ids[] = (int) $product->get_parent_id();
+                }
+            }
+            if ( method_exists( $item, 'get_product_id' ) ) {
+                $ids[] = (int) $item->get_product_id();
+            }
+            if ( method_exists( $item, 'get_variation_id' ) && $item->get_variation_id() ) {
+                $ids[] = (int) $item->get_variation_id();
+            }
+            foreach ( $ids as $id ) {
+                if ( ! $id ) {
+                    continue;
+                }
+                if ( array_key_exists( $id, $map ) && $map[ $id ] !== $domain ) {
+                    $map[ $id ] = null;
+                } elseif ( ! array_key_exists( $id, $map ) ) {
+                    $map[ $id ] = $domain;
+                }
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * @param array<int,string|null> $map Product id to domain.
+     * @param object|null            $product Product.
+     * @param object                 $item Subscription line.
+     * @return string
+     */
+    private function domain_for_product_ids( $map, $product, $item ) {
+        $ids = array();
+        if ( is_object( $product ) && method_exists( $product, 'get_id' ) ) {
+            $ids[] = (int) $product->get_id();
+            if ( method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
+                $ids[] = (int) $product->get_parent_id();
+            }
+        }
+        if ( method_exists( $item, 'get_product_id' ) ) {
+            $ids[] = (int) $item->get_product_id();
+        }
+        if ( method_exists( $item, 'get_variation_id' ) && $item->get_variation_id() ) {
+            $ids[] = (int) $item->get_variation_id();
+        }
+        foreach ( $ids as $id ) {
+            if ( $id && isset( $map[ $id ] ) && is_string( $map[ $id ] ) && '' !== $map[ $id ] ) {
+                return $map[ $id ];
+            }
+        }
+        return '';
+    }
+
+    /**
+     * @param object|null $order Order or subscription.
+     * @return array<int,array{name:string,domain:string}>
+     */
+    private function service_domain_rows( $order ) {
+        $rows = array();
+        if ( ! is_object( $order ) ) {
+            return $rows;
+        }
+        if ( method_exists( $order, 'get_items' ) ) {
+            foreach ( $order->get_items() as $item ) {
+                if ( ! is_object( $item ) || ! method_exists( $item, 'get_meta' ) ) {
+                    continue;
+                }
+                $domain = $this->normalize_checkout_domain( $item->get_meta( self::SERVICE_DOMAIN_META, true ) );
+                if ( '' === $domain ) {
+                    continue;
+                }
+                $name = method_exists( $item, 'get_name' ) ? (string) $item->get_name() : '';
+                $rows[] = array(
+                    'name'   => $name,
+                    'domain' => $domain,
+                );
+            }
+        }
+        if ( ! $rows && method_exists( $order, 'get_meta' ) ) {
+            $domain = $this->normalize_checkout_domain( $order->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' !== $domain ) {
+                $rows[] = array(
+                    'name'   => '',
+                    'domain' => $domain,
+                );
+            }
+        }
+        return $rows;
     }
 
     /**

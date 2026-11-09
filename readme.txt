@@ -24,7 +24,7 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 == Changelog ==
 
 = 2.1.18 =
-* Checkout License Domain is shown and required only for products that issue a licence. Maintenance, support, and hosting carts skip the field. Mixed carts, licensed renewals, and licensed switches still require a valid domain.
+* Checkout License Domain is shown and required only for products that issue a licence. Maintenance plans and support packs ask for the one website that service covers, stored as `_rw_service_domain` on the order line and on the maintenance subscription. Hosting carts with no licence package still skip both fields. Service renewals and switches keep the stored site. Licensed renewals and switches still require a licence domain.
 
 = 2.1.17 =
 * Products & licences lists only licensed products. Maintenance plans stay out of the account menu and licence list. The licence endpoint stays registered for direct URLs.
