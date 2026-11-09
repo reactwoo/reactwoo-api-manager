@@ -77,6 +77,14 @@ rw_assert( strpos( $product, 'rw_cloud_plan' ) === false, 'Product meta does not
 
 rw_assert( strpos( $handler, 'save_checkout_domain_field' ) !== false, 'Domain checkout field remains' );
 rw_assert( strpos( $handler, 'validate_domain_field' ) !== false, 'Domain validation remains' );
+rw_assert( strpos( $handler, 'function cart_needs_license_domain' ) !== false, 'Domain field is limited to carts that issue a plugin licence' );
+rw_assert( strpos( $handler, 'function product_issues_plugin_licence' ) !== false, 'Licensed products are detected from the licence package flag' );
+$domain_field = substr( $handler, (int) strpos( $handler, 'function add_domain_field_to_checkout' ), 900 );
+$domain_validate = substr( $handler, (int) strpos( $handler, 'function validate_domain_field' ), 900 );
+rw_assert( strpos( $domain_field, 'cart_needs_license_domain' ) !== false, 'Checkout domain field checks the cart before rendering' );
+rw_assert( strpos( $domain_validate, 'cart_needs_license_domain' ) !== false, 'Checkout domain validation checks the cart before rejecting' );
+rw_assert( strpos( $domain_validate, 'Please enter your license domain.' ) !== false, 'Licensed checkout still requires a domain' );
+rw_assert( strpos( $domain_validate, 'Please enter a valid domain name.' ) !== false, 'Licensed checkout still rejects an invalid domain' );
 
 $refund_or_cancel = (
 	strpos( $handler, 'handle_subscription_status_change' ) !== false

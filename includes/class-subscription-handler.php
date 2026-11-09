@@ -802,9 +802,154 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
+     * Whether checkout should collect and validate a licence domain.
+     *
+     * True when the cart contains at least one product that issues a plugin
+     * licence. An unreadable cart keeps the historical requirement so a
+     * licensed checkout is not silently skipped.
+     *
+     * Renewals and subscription switches use the product in the cart. They
+     * are not exempt, and they do not force the field on for a service.
+     *
+     * @param WC_Cart|object|null $cart Cart. Null uses the current WooCommerce cart.
+     * @return bool
+     */
+    public function cart_needs_license_domain( $cart = null ) {
+        if ( null === $cart ) {
+            if ( function_exists( 'WC' ) && WC() && is_object( WC()->cart ) && method_exists( WC()->cart, 'get_cart' ) ) {
+                $cart = WC()->cart;
+            } else {
+                return true;
+            }
+        }
+
+        if ( ! is_object( $cart ) || ! method_exists( $cart, 'get_cart' ) ) {
+            return true;
+        }
+
+        $items = $cart->get_cart();
+        if ( ! is_array( $items ) ) {
+            return true;
+        }
+
+        foreach ( $items as $item ) {
+            if ( $this->product_issues_plugin_licence( $this->cart_item_product( $item ) ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether purchasing this product provisions a plugin licence.
+     *
+     * Matches create_license_for_subscription: subscription products (including
+     * variations) with a positive _reactwoo_license_package_id on the product
+     * or its parent. That package id is the licensed-product flag. Maintenance
+     * plans do not issue a plugin licence, even when a package id is still
+     * stored. Products already excluded by reactwoo_api_manager_unlicensed_product_ids
+     * (maintenance plans 3654, 3657, 3660 and their variations, by default)
+     * are the same service products.
+     *
+     * @param WC_Product|object|null $product Product.
+     * @return bool
+     */
+    public function product_issues_plugin_licence( $product ) {
+        if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) || ! method_exists( $product, 'is_type' ) ) {
+            return false;
+        }
+
+        if ( ! $product->is_type( 'subscription' ) && ! $product->is_type( 'subscription_variation' ) && ! $product->is_type( 'variable-subscription' ) ) {
+            return false;
+        }
+
+        if ( is_array( $this->maintenance_entitlement_slugs( $product ) ) ) {
+            return false;
+        }
+
+        if ( $this->product_is_unlicensed_service( $product ) ) {
+            return false;
+        }
+
+        return $this->license_package_id_for_product( $product ) > 0;
+    }
+
+    /**
+     * Product object stored on a cart line, or a lookup by variation / product id.
+     *
+     * @param array<string,mixed>|mixed $item Cart item.
+     * @return object|null
+     */
+    private function cart_item_product( $item ) {
+        if ( is_array( $item ) && isset( $item['data'] ) && is_object( $item['data'] ) && method_exists( $item['data'], 'get_id' ) ) {
+            return $item['data'];
+        }
+
+        $product_id = 0;
+        if ( is_array( $item ) ) {
+            if ( ! empty( $item['variation_id'] ) ) {
+                $product_id = (int) $item['variation_id'];
+            } elseif ( ! empty( $item['product_id'] ) ) {
+                $product_id = (int) $item['product_id'];
+            }
+        }
+
+        if ( $product_id && function_exists( 'wc_get_product' ) ) {
+            $product = wc_get_product( $product_id );
+            return is_object( $product ) ? $product : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Licence package id from the product, then its parent. Same lookup as
+     * subscription licence creation.
+     *
+     * @param object $product Product.
+     * @return int
+     */
+    private function license_package_id_for_product( $product ) {
+        $package_id = absint( get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true ) );
+        if ( ! $package_id && method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
+            $package_id = absint( get_post_meta( (int) $product->get_parent_id(), '_reactwoo_license_package_id', true ) );
+        }
+
+        return (int) $package_id;
+    }
+
+    /**
+     * Service products the plugin already refuses to treat as licensed.
+     *
+     * The default ids are maintenance plans. Variations inherit the parent
+     * id. Support packs and hosting are not listed here: they are services
+     * because they have no licence package id.
+     *
+     * @param object $product Product.
+     * @return bool
+     */
+    private function product_is_unlicensed_service( $product ) {
+        $excluded = array( 3654, 3657, 3660 );
+        if ( function_exists( 'apply_filters' ) ) {
+            $excluded = (array) apply_filters( 'reactwoo_api_manager_unlicensed_product_ids', $excluded );
+        }
+
+        $excluded   = array_map( 'intval', $excluded );
+        $product_id = (int) $product->get_id();
+        $parent_id  = method_exists( $product, 'get_parent_id' ) ? (int) $product->get_parent_id() : 0;
+
+        return in_array( $product_id, $excluded, true ) || ( $parent_id && in_array( $parent_id, $excluded, true ) );
+    }
+
+    /**
      * Add domain field to checkout
      */
     public function add_domain_field_to_checkout() {
+        if ( ! $this->cart_needs_license_domain() ) {
+            return;
+        }
+
         $checkout = WC()->checkout();
         
         echo '<div id="reactwoo_domain_field">';
@@ -823,6 +968,10 @@ class ReactWoo_Subscription_Handler {
      * Validate domain field on checkout
      */
     public function validate_domain_field() {
+        if ( ! $this->cart_needs_license_domain() ) {
+            return;
+        }
+
         if ( empty( $_POST['reactwoo_domain'] ) ) {
             wc_add_notice( __( 'Please enter your license domain.', 'reactwoo-api-manager' ), 'error' );
         } else {
