@@ -12,6 +12,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ReactWoo_Product_Meta {
 
     /**
+     * Packages fetched once per request for the product editor.
+     *
+     * @var array|WP_Error|null
+     */
+    private $license_packages = null;
+
+    /**
      * Constructor
      */
     public function __construct() {
@@ -38,8 +45,7 @@ class ReactWoo_Product_Meta {
             return;
         }
 
-        $api = new ReactWoo_License_Server_API();
-        $packages = $api->get_packages();
+        $packages = $this->load_license_packages();
 
         if ( is_wp_error( $packages ) ) {
             echo '<div class="options_group">';
@@ -53,19 +59,80 @@ class ReactWoo_Product_Meta {
             return;
         }
 
-        $selected_package_id = get_post_meta( $post->ID, '_reactwoo_license_package_id', true );
-
         echo '<div class="options_group">';
-        woocommerce_wp_select( array(
-            'id' => '_reactwoo_license_package_id',
-            'label' => __( 'License Package Type', 'reactwoo-api-manager' ),
-            'description' => __( 'Select the license package type from the license server that will be associated with this subscription product.', 'reactwoo-api-manager' ),
-            'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
-            'value' => $selected_package_id,
-        ) );
+        echo '<p class="form-field">' . esc_html__( 'Licence packages for this product are chosen on the License Settings tab. A variation can replace that list.', 'reactwoo-api-manager' ) . '</p>';
         $this->render_maintenance_plan_field( $post->ID );
         $this->render_plugin_slug_field( $post->ID );
         echo '</div>';
+    }
+
+    /**
+     * Licence packages from the server, cached for this request.
+     *
+     * @return array|WP_Error
+     */
+    private function load_license_packages() {
+        if ( null === $this->license_packages ) {
+            $api = new ReactWoo_License_Server_API();
+            $this->license_packages = $api->get_packages();
+        }
+        return $this->license_packages;
+    }
+
+    /**
+     * Multi-select of licence packages. The first id is also stored in the
+     * legacy single meta key so older readers keep working.
+     *
+     * @param int         $post_id Product or variation id.
+     * @param string      $field_name Field name.
+     * @param int|null    $loop Variation loop index.
+     */
+    private function render_license_packages_field( $post_id, $field_name, $loop = null ) {
+        $packages = $this->load_license_packages();
+        $selected = class_exists( 'ReactWoo_Subscription_Handler' )
+            ? ReactWoo_Subscription_Handler::license_package_ids_for_post( $post_id )
+            : array();
+
+        $id      = $field_name;
+        $name    = $field_name;
+        $present = $field_name . '_present';
+        if ( null !== $loop ) {
+            $id      = $field_name . '_' . (int) $loop;
+            $name    = $field_name . '[' . (int) $loop . ']';
+            $present = $field_name . '_present[' . (int) $loop . ']';
+        }
+
+        $tag   = null !== $loop ? 'div' : 'p';
+        $class = null !== $loop ? 'form-field form-row form-row-full' : 'form-field';
+
+        echo '<' . $tag . ' class="' . esc_attr( $class ) . '">';
+        echo '<label for="' . esc_attr( $id ) . '">' . esc_html__( 'License packages', 'reactwoo-api-manager' ) . '</label>';
+
+        if ( is_wp_error( $packages ) ) {
+            echo '<span class="description">' . esc_html( sprintf(
+                /* translators: %s: error message */
+                __( 'Error loading license types: %s', 'reactwoo-api-manager' ),
+                $packages->get_error_message()
+            ) ) . '</span>';
+            echo '</' . $tag . '>';
+            return;
+        }
+
+        // Present even when nothing is selected, so clearing the list can be saved.
+        echo '<input type="hidden" name="' . esc_attr( $present ) . '" value="1" />';
+        echo '<select id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '[]" multiple="multiple" style="height:8em;width:50%;">';
+        foreach ( (array) $packages as $package ) {
+            $package_id = isset( $package['id'] ) ? absint( $package['id'] ) : 0;
+            if ( ! $package_id ) {
+                continue;
+            }
+            $clean_name  = trim( wp_strip_all_tags( isset( $package['name'] ) ? (string) $package['name'] : '' ) );
+            $is_selected = in_array( $package_id, $selected, true ) ? ' selected="selected"' : '';
+            echo '<option value="' . esc_attr( (string) $package_id ) . '"' . $is_selected . '>' . esc_html( $clean_name ) . '</option>';
+        }
+        echo '</select>';
+        echo '<span class="description">' . esc_html__( 'Select every licence package this subscription should provision. One package keeps a single licence key. Several packages (a bundle) create one key each. On a variation, any selection here replaces the parent product packages.', 'reactwoo-api-manager' ) . '</span>';
+        echo '</' . $tag . '>';
     }
 
     /**
@@ -98,13 +165,34 @@ class ReactWoo_Product_Meta {
      * @param int $post_id Post ID
      */
     public function save_license_type_field( $post_id ) {
-        if ( isset( $_POST['_reactwoo_license_package_id'] ) ) {
-            update_post_meta( $post_id, '_reactwoo_license_package_id', intval( $_POST['_reactwoo_license_package_id'] ) );
-        } else {
-            delete_post_meta( $post_id, '_reactwoo_license_package_id' );
+        if ( isset( $_POST['_reactwoo_license_package_ids_present'] ) ) {
+            $raw = isset( $_POST['_reactwoo_license_package_ids'] ) ? wp_unslash( $_POST['_reactwoo_license_package_ids'] ) : array();
+            $this->store_package_ids( $post_id, $raw );
+        } elseif ( isset( $_POST['_reactwoo_license_package_id'] ) ) {
+            $package_id = absint( wp_unslash( $_POST['_reactwoo_license_package_id'] ) );
+            $this->store_package_ids( $post_id, $package_id ? array( $package_id ) : array() );
         }
         $this->save_plugin_slug_field( $post_id );
         $this->save_maintenance_plan_field( $post_id );
+    }
+
+    /**
+     * Persist the package list and the legacy single id (the first package).
+     *
+     * @param int   $post_id Product or variation id.
+     * @param mixed $raw Posted ids.
+     */
+    private function store_package_ids( $post_id, $raw ) {
+        $ids = class_exists( 'ReactWoo_Subscription_Handler' )
+            ? ReactWoo_Subscription_Handler::sanitize_package_id_list( $raw )
+            : array();
+        if ( $ids ) {
+            update_post_meta( $post_id, '_reactwoo_license_package_ids', $ids );
+            update_post_meta( $post_id, '_reactwoo_license_package_id', $ids[0] );
+            return;
+        }
+        delete_post_meta( $post_id, '_reactwoo_license_package_ids' );
+        delete_post_meta( $post_id, '_reactwoo_license_package_id' );
     }
 
     /**
@@ -198,14 +286,20 @@ class ReactWoo_Product_Meta {
             return;
         }
 
-        // Variation meta is stored with array index in POST data
-        $key = "variable_reactwoo_license_package_id";
-        if ( isset( $_POST[ $key ] ) && is_array( $_POST[ $key ] ) && isset( $_POST[ $key ][ $loop ] ) ) {
-            $package_id = intval( $_POST[ $key ][ $loop ] );
-            if ( $package_id > 0 ) {
-                update_post_meta( $variation_id, '_reactwoo_license_package_id', $package_id );
-            } else {
-                delete_post_meta( $variation_id, '_reactwoo_license_package_id' );
+        // Variation meta is stored with array index in POST data.
+        $present = 'variable_reactwoo_license_package_ids_present';
+        if ( isset( $_POST[ $present ] ) && is_array( $_POST[ $present ] ) && isset( $_POST[ $present ][ $loop ] ) ) {
+            $posted = array();
+            $key    = 'variable_reactwoo_license_package_ids';
+            if ( isset( $_POST[ $key ] ) && is_array( $_POST[ $key ] ) && isset( $_POST[ $key ][ $loop ] ) ) {
+                $posted = wp_unslash( $_POST[ $key ][ $loop ] );
+            }
+            $this->store_package_ids( $variation_id, $posted );
+        } else {
+            $key = 'variable_reactwoo_license_package_id';
+            if ( isset( $_POST[ $key ] ) && is_array( $_POST[ $key ] ) && isset( $_POST[ $key ][ $loop ] ) ) {
+                $package_id = absint( wp_unslash( $_POST[ $key ][ $loop ] ) );
+                $this->store_package_ids( $variation_id, $package_id ? array( $package_id ) : array() );
             }
         }
 
@@ -233,6 +327,8 @@ class ReactWoo_Product_Meta {
         if ( ! $product || ! $product->is_type( 'subscription_variation' ) ) {
             return;
         }
+
+        $this->render_license_packages_field( $variation->ID, 'variable_reactwoo_license_package_ids', $loop );
 
         $selected = (string) get_post_meta( $variation->ID, '_rw_maintenance_plan_key', true );
         if ( ! in_array( $selected, array( 'essential', 'standard', 'business' ), true ) ) {
@@ -279,9 +375,10 @@ class ReactWoo_Product_Meta {
     public function add_license_tab_content() {
         global $post;
 
-        $api = new ReactWoo_License_Server_API();
-        $packages = $api->get_packages();
-        $selected_package_id = get_post_meta( $post->ID, '_reactwoo_license_package_id', true );
+        $packages = $this->load_license_packages();
+        $selected_ids = class_exists( 'ReactWoo_Subscription_Handler' )
+            ? ReactWoo_Subscription_Handler::license_package_ids_for_post( $post->ID )
+            : array();
 
         ?>
         <div id="reactwoo_license_product_data" class="panel woocommerce_options_panel">
@@ -292,38 +389,37 @@ class ReactWoo_Product_Meta {
                     echo '<strong>' . esc_html__( 'Error', 'reactwoo-api-manager' ) . ':</strong> ';
                     echo esc_html( $packages->get_error_message() );
                     echo '</p>';
+                } elseif ( empty( $packages ) ) {
+                    echo '<p class="form-field">';
+                    echo esc_html__( 'No license packages are available from the license server. Please create at least one package on license.reactwoo.com and ensure the /api/packages endpoint is reachable.', 'reactwoo-api-manager' );
+                    echo '</p>';
                 } else {
-                    if ( empty( $packages ) ) {
-                        echo '<p class="form-field">';
-                        echo esc_html__( 'No license packages are available from the license server. Please create at least one package on license.reactwoo.com and ensure the /api/packages endpoint is reachable.', 'reactwoo-api-manager' );
-                        echo '</p>';
-                    } else {
-                        woocommerce_wp_select( array(
-                            'id' => '_reactwoo_license_package_id',
-                            'label' => __( 'License Package Type', 'reactwoo-api-manager' ),
-                            'description' => __( 'Select the license package type from the license server that will be associated with this subscription product. When a subscription is created, a license key will be automatically generated for the selected package type.', 'reactwoo-api-manager' ),
-                            'options' => $this->format_packages_for_select( $packages, $selected_package_id ),
-                            'value' => $selected_package_id,
-                        ) );
-                        $this->render_maintenance_plan_field( $post->ID );
-                        $this->render_plugin_slug_field( $post->ID );
+                    $this->render_license_packages_field( $post->ID, '_reactwoo_license_package_ids' );
+                    $this->render_maintenance_plan_field( $post->ID );
+                    $this->render_plugin_slug_field( $post->ID );
 
-                        if ( $selected_package_id ) {
+                    if ( $selected_ids ) {
+                        echo '<div class="form-field">';
+                        echo '<p><strong>' . esc_html__( 'Selected Package Details', 'reactwoo-api-manager' ) . ':</strong></p>';
+                        echo '<ul style="margin-left: 20px;">';
+                        foreach ( $selected_ids as $selected_package_id ) {
                             $selected_package = $this->find_package_by_id( $packages, $selected_package_id );
-                            if ( $selected_package ) {
-                                echo '<div class="form-field">';
-                                echo '<p><strong>' . esc_html__( 'Selected Package Details', 'reactwoo-api-manager' ) . ':</strong></p>';
-                                echo '<ul style="margin-left: 20px;">';
-                                if ( isset( $selected_package['description'] ) && $selected_package['description'] ) {
-                                    echo '<li><strong>' . esc_html__( 'Description', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['description'] ) . '</li>';
-                                }
-                                if ( isset( $selected_package['slug'] ) && $selected_package['slug'] ) {
-                                    echo '<li><strong>' . esc_html__( 'Slug', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['slug'] ) . '</li>';
-                                }
-                                echo '</ul>';
-                                echo '</div>';
+                            if ( ! $selected_package ) {
+                                continue;
+                            }
+                            $detail_name = isset( $selected_package['name'] ) ? trim( wp_strip_all_tags( (string) $selected_package['name'] ) ) : '';
+                            if ( $detail_name ) {
+                                echo '<li><strong>' . esc_html__( 'Package', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $detail_name ) . '</li>';
+                            }
+                            if ( isset( $selected_package['description'] ) && $selected_package['description'] ) {
+                                echo '<li><strong>' . esc_html__( 'Description', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['description'] ) . '</li>';
+                            }
+                            if ( isset( $selected_package['slug'] ) && $selected_package['slug'] ) {
+                                echo '<li><strong>' . esc_html__( 'Slug', 'reactwoo-api-manager' ) . ':</strong> ' . esc_html( $selected_package['slug'] ) . '</li>';
                             }
                         }
+                        echo '</ul>';
+                        echo '</div>';
                     }
                 }
                 ?>

@@ -25,7 +25,12 @@
     setButtonLabel(button, i18n.pending || '…');
 
     try {
-      var response = await fetch(cfg.restUrl + encodeURIComponent(subscriptionId) + '/key', {
+      var packageSlug = button.getAttribute('data-rw-copy-package') || '';
+      var keyUrl = cfg.restUrl + encodeURIComponent(subscriptionId) + '/key';
+      if (packageSlug) {
+        keyUrl += '?package=' + encodeURIComponent(packageSlug);
+      }
+      var response = await fetch(keyUrl, {
         method: 'GET',
         credentials: 'same-origin',
         headers: {

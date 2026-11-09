@@ -19,7 +19,8 @@ $domain_count = 0;
 $download_count = 0;
 foreach ( $records as $record ) {
 	if ( isset( $record['status'] ) && 'active' === $record['status'] ) {
-		++$active_count;
+		$key_count = ( ! empty( $record['license_keys'] ) && is_array( $record['license_keys'] ) ) ? count( $record['license_keys'] ) : 1;
+		$active_count += max( 1, $key_count );
 	}
 	if ( ! empty( $record['registered_domain'] ) ) {
 		++$domain_count;
@@ -122,6 +123,26 @@ $status_labels = array(
 
 					<div class="rw-account__panels">
 						<div class="rw-account__panel">
+							<?php
+							$key_rows = ( ! empty( $record['license_keys'] ) && is_array( $record['license_keys'] ) && count( $record['license_keys'] ) > 1 )
+								? $record['license_keys']
+								: array();
+							?>
+							<?php if ( $key_rows ) : ?>
+								<?php foreach ( $key_rows as $key_row ) : ?>
+									<div class="rw-account__key-row">
+										<div class="rw-account__panel-head">
+											<span><?php echo esc_html( $key_row['label'] ); ?></span>
+											<?php if ( ! empty( $key_row['key_available'] ) ) : ?>
+												<button type="button" class="rw-account__copy" data-rw-copy-key="<?php echo esc_attr( (string) $record['subscription_id'] ); ?>" data-rw-copy-package="<?php echo esc_attr( (string) $key_row['slug'] ); ?>">
+													<?php esc_html_e( 'Copy key', 'reactwoo-api-manager' ); ?>
+												</button>
+											<?php endif; ?>
+										</div>
+										<p class="rw-account__masked-key"><?php echo esc_html( $key_row['masked_key'] ); ?></p>
+									</div>
+								<?php endforeach; ?>
+							<?php else : ?>
 							<div class="rw-account__panel-head">
 								<span><?php esc_html_e( 'Licence key', 'reactwoo-api-manager' ); ?></span>
 								<?php if ( ! empty( $record['can_reveal_key'] ) ) : ?>
@@ -141,6 +162,7 @@ $status_labels = array(
 								}
 								?>
 							</p>
+							<?php endif; ?>
 							<?php if ( ! empty( $record['renewal_date'] ) ) : ?>
 								<span class="rw-account__pill rw-account__pill--renew"><?php echo esc_html( sprintf( __( 'Renews %s', 'reactwoo-api-manager' ), $record['renewal_date'] ) ); ?></span>
 							<?php endif; ?>

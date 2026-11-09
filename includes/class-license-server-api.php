@@ -115,7 +115,7 @@ class ReactWoo_License_Server_API {
      *   @type string $customer_email
      *   @type string $customer_name
      *   @type string $package_slug
-     *   @type int    $wc_subscription_id
+     *   @type string $wc_subscription_id Woo subscription id, or "{id}:{package_slug}" for each package on a bundle. The licence server treats this as the idempotency key.
      *   @type int    $wc_order_id
      *   @type string $status
      *   @type string $domain

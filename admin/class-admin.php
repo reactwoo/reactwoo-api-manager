@@ -196,8 +196,18 @@ class ReactWoo_API_Manager_Admin {
     public function render_subscription_license_column( $subscription ) {
         $license_key = $subscription->get_meta( '_reactwoo_license_key' );
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
-        
-        if ( $license_key ) {
+        $license_keys = $subscription->get_meta( '_reactwoo_license_keys' );
+        $license_labels = $subscription->get_meta( '_reactwoo_license_key_labels' );
+        if ( ! is_array( $license_labels ) ) {
+            $license_labels = array();
+        }
+
+        if ( is_array( $license_keys ) && count( $license_keys ) > 1 ) {
+            foreach ( $license_keys as $slug => $key ) {
+                $label = isset( $license_labels[ $slug ] ) ? (string) $license_labels[ $slug ] : (string) $slug;
+                echo '<div><small>' . esc_html( $label ) . '</small><br><code>' . esc_html( (string) $key ) . '</code></div>';
+            }
+        } elseif ( $license_key ) {
             echo '<code>' . esc_html( $license_key ) . '</code>';
             if ( $license_id ) {
                 echo '<br><small>' . sprintf( __( 'License ID: %d', 'reactwoo-api-manager' ), $license_id ) . '</small>';
@@ -237,8 +247,8 @@ class ReactWoo_API_Manager_Admin {
             return new WP_Error( 'not_subscription', __( 'The selected product must be a subscription.', 'reactwoo-api-manager' ) );
         }
 
-        $package_id = get_post_meta( $product_id, '_reactwoo_license_package_id', true );
-        if ( ! $package_id ) {
+        $package_ids = ReactWoo_Subscription_Handler::license_package_ids_for_post( $product_id );
+        if ( ! $package_ids ) {
             return new WP_Error( 'missing_package', __( 'This product does not have a license package assigned.', 'reactwoo-api-manager' ) );
         }
 

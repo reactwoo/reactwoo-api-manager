@@ -87,8 +87,18 @@ class ReactWoo_Customer_Account_Service {
 	 * @param WC_Subscription $subscription Subscription.
 	 * @return string|WP_Error
 	 */
-	public function get_owned_license_key( $subscription ) {
+	public function get_owned_license_key( $subscription, $package_slug = '' ) {
 		if ( ! $subscription instanceof WC_Subscription ) {
+			return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
+		}
+
+		$package_slug = strtolower( trim( (string) $package_slug ) );
+		$package_slug = trim( (string) preg_replace( '/[^a-z0-9\-]+/', '-', $package_slug ), '-' );
+		if ( '' !== $package_slug ) {
+			$map = $subscription->get_meta( '_reactwoo_license_keys', true );
+			if ( is_array( $map ) && ! empty( $map[ $package_slug ] ) ) {
+				return (string) $map[ $package_slug ];
+			}
 			return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
 		}
 
@@ -257,6 +267,20 @@ class ReactWoo_Customer_Account_Service {
 			break;
 		}
 
+		$key_rows = $this->license_key_rows( $subscription, $product_name );
+		if ( ! $key_rows && '' !== $license_key ) {
+			$key_rows[] = array(
+				'slug'          => '',
+				'label'         => $product_name,
+				'key'           => $license_key,
+				'masked_key'    => self::mask_license_key( $license_key ),
+				'key_available' => true,
+			);
+		}
+		if ( $key_rows ) {
+			$license_key = (string) $key_rows[0]['key'];
+		}
+
 		$status       = self::map_status( $subscription, $license_key );
 		$key_available = $license_key !== '';
 		$renewal_ts   = $subscription->get_time( 'next_payment' );
@@ -312,6 +336,7 @@ class ReactWoo_Customer_Account_Service {
 			'plan_label'        => __( 'Single-domain subscription licence', 'reactwoo-api-manager' ),
 			'status'            => $status,
 			'masked_key'        => $key_available ? self::mask_license_key( $license_key ) : '',
+			'license_keys'      => $key_rows,
 			'key_available'     => $key_available,
 			'can_reveal_key'    => $key_available,
 			'registered_domain' => $domain,
@@ -372,6 +397,51 @@ class ReactWoo_Customer_Account_Service {
 		}
 
 		return $matched;
+	}
+
+	/**
+	 * One row per provisioned package. Labels are the licence package names.
+	 *
+	 * @param WC_Subscription $subscription Subscription.
+	 * @param string          $product_name Woo product name, used when a label was not stored.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function license_key_rows( $subscription, $product_name ) {
+		$keys   = $subscription->get_meta( '_reactwoo_license_keys', true );
+		$labels = $subscription->get_meta( '_reactwoo_license_key_labels', true );
+		if ( ( ! is_array( $keys ) || ! $keys ) && method_exists( $subscription, 'get_parent' ) ) {
+			$parent = $subscription->get_parent();
+			if ( is_object( $parent ) && method_exists( $parent, 'get_meta' ) ) {
+				$keys   = $parent->get_meta( '_reactwoo_license_keys', true );
+				$labels = $parent->get_meta( '_reactwoo_license_key_labels', true );
+			}
+		}
+		if ( ! is_array( $keys ) ) {
+			return array();
+		}
+		if ( ! is_array( $labels ) ) {
+			$labels = array();
+		}
+
+		$rows = array();
+		foreach ( $keys as $slug => $key ) {
+			$key = (string) $key;
+			if ( '' === $key ) {
+				continue;
+			}
+			$label = isset( $labels[ $slug ] ) ? trim( (string) $labels[ $slug ] ) : '';
+			if ( '' === $label ) {
+				$label = 1 === count( $keys ) ? (string) $product_name : (string) $slug;
+			}
+			$rows[] = array(
+				'slug'          => (string) $slug,
+				'label'         => $label,
+				'key'           => $key,
+				'masked_key'    => self::mask_license_key( $key ),
+				'key_available' => true,
+			);
+		}
+		return $rows;
 	}
 
 	/**

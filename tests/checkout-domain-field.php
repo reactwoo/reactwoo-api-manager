@@ -134,6 +134,13 @@ if ( ! class_exists( 'RW_Checkout_Product', false ) ) {
 		/**
 		 * @return string
 		 */
+		public function get_type() {
+			return $this->type;
+		}
+
+		/**
+		 * @return string
+		 */
 		public function get_name() {
 			return $this->name;
 		}

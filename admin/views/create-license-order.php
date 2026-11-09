@@ -41,8 +41,8 @@ if ( ! is_wp_error( $packages ) && is_array( $packages ) ) {
 
 $products_with_packages = array();
 foreach ( $subscription_products as $product ) {
-    $package_id = get_post_meta( $product->get_id(), '_reactwoo_license_package_id', true );
-    if ( $package_id ) {
+    $package_ids = ReactWoo_Subscription_Handler::license_package_ids_for_post( $product->get_id() );
+    if ( $package_ids ) {
         $products_with_packages[ $product->get_id() ] = $product;
     }
 }
@@ -151,11 +151,17 @@ $billing_period_options = array(
                             <select id="wizard_product" name="wizard_product" required>
                             <?php foreach ( $products_with_packages as $product_id => $product ) : ?>
                                     <?php
-                                    $package_id = get_post_meta( $product_id, '_reactwoo_license_package_id', true );
-                                    if ( ! $package_id ) {
+                                    $package_ids = ReactWoo_Subscription_Handler::license_package_ids_for_post( $product_id );
+                                    if ( ! $package_ids ) {
                                         continue;
                                     }
-                                $package_label = isset( $package_map[ intval( $package_id ) ] ) ? $package_map[ intval( $package_id ) ]['name'] : __( 'License package', 'reactwoo-api-manager' );
+                                $package_names = array();
+                                foreach ( $package_ids as $package_id ) {
+                                    $package_names[] = isset( $package_map[ intval( $package_id ) ]['name'] )
+                                        ? wp_strip_all_tags( $package_map[ intval( $package_id ) ]['name'] )
+                                        : __( 'License package', 'reactwoo-api-manager' );
+                                }
+                                $package_label = implode( ' + ', $package_names );
                                     ?>
                                 <option value="<?php echo esc_attr( $product_id ); ?>" <?php selected( intval( $selected_product_id ), $product_id, true ); ?>>
                                         <?php echo esc_html( $product->get_name() . ' — ' . $package_label ); ?>
