@@ -3,11 +3,10 @@
  * Checkout Licence Domain is shown and validated only for plugin-licence products.
  *
  * Licensed products are subscription products with _reactwoo_license_package_id
- * (on the product or its parent). Maintenance plans 3654, 3657 and 3660,
- * including subscription variations, stay services even with a stale package
- * id. Support packs 3663-3666 and hosting have no licence package, so they
- * do not collect a domain. Renewals and subscription switches follow the
- * product in the cart.
+ * (on the product or its parent). They keep the License Domain field.
+ * Maintenance plans and support packs 3663-3666 collect a separate website,
+ * stored as _rw_service_domain. Hosting with no licence package collects
+ * neither. Service renewals and switches keep the stored site.
  *
  * @package ReactWoo_API_Manager
  */
@@ -92,14 +91,21 @@ if ( ! class_exists( 'RW_Checkout_Product', false ) ) {
 		private $type;
 
 		/**
+		 * @var string
+		 */
+		private $name;
+
+		/**
 		 * @param int    $id Product ID.
 		 * @param string $type Product type.
 		 * @param int    $parent_id Parent ID.
+		 * @param string $name Product name.
 		 */
-		public function __construct( $id, $type, $parent_id = 0 ) {
+		public function __construct( $id, $type, $parent_id = 0, $name = '' ) {
 			$this->id        = (int) $id;
 			$this->parent_id = (int) $parent_id;
 			$this->type      = (string) $type;
+			$this->name      = '' !== $name ? (string) $name : 'Product ' . (int) $id;
 		}
 
 		/**
@@ -123,6 +129,13 @@ if ( ! class_exists( 'RW_Checkout_Product', false ) ) {
 		public function is_type( $type ) {
 			$types = (array) $type;
 			return in_array( $this->type, $types, true );
+		}
+
+		/**
+		 * @return string
+		 */
+		public function get_name() {
+			return $this->name;
 		}
 	}
 }
@@ -194,6 +207,145 @@ if ( ! class_exists( 'RW_Checkout_WC', false ) ) {
 		 */
 		public function checkout() {
 			return $this->checkout;
+		}
+	}
+}
+
+if ( ! function_exists( 'esc_attr' ) ) {
+	/**
+	 * @param string $text Text.
+	 * @return string
+	 */
+	function esc_attr( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'esc_html' ) ) {
+	/**
+	 * @param string $text Text.
+	 * @return string
+	 */
+	function esc_html( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'esc_html__' ) ) {
+	/**
+	 * @param string $text Text.
+	 * @param string $domain Domain.
+	 * @return string
+	 */
+	function esc_html__( $text, $domain = null ) {
+		unset( $domain );
+		return (string) $text;
+	}
+}
+
+if ( ! function_exists( 'esc_html_e' ) ) {
+	/**
+	 * @param string $text Text.
+	 * @param string $domain Domain.
+	 */
+	function esc_html_e( $text, $domain = null ) {
+		unset( $domain );
+		echo esc_html( $text );
+	}
+}
+
+if ( ! function_exists( 'wcs_get_subscription' ) ) {
+	/**
+	 * @param int $subscription_id Subscription ID.
+	 * @return object|false
+	 */
+	function wcs_get_subscription( $subscription_id ) {
+		$subscription_id = (int) $subscription_id;
+		return isset( $GLOBALS['rw_test_wcs'][ $subscription_id ] ) ? $GLOBALS['rw_test_wcs'][ $subscription_id ] : false;
+	}
+}
+
+if ( ! class_exists( 'RW_Checkout_Meta_Bag', false ) ) {
+	/**
+	 * Order, line, or subscription double with meta.
+	 */
+	class RW_Checkout_Meta_Bag {
+		/**
+		 * @var array<string,mixed>
+		 */
+		public $meta = array();
+
+		/**
+		 * @var array<int,object>
+		 */
+		public $items = array();
+
+		/**
+		 * @var object|null
+		 */
+		public $product;
+
+		/**
+		 * @var string
+		 */
+		public $name = '';
+
+		/**
+		 * @var bool
+		 */
+		public $saved = false;
+
+		/**
+		 * @param string $key Meta key.
+		 * @param mixed  $value Meta value.
+		 * @param bool   $unique Unique.
+		 */
+		public function add_meta_data( $key, $value, $unique = false ) {
+			unset( $unique );
+			$this->meta[ $key ] = $value;
+		}
+
+		/**
+		 * @param string $key Meta key.
+		 * @param mixed  $value Meta value.
+		 */
+		public function update_meta_data( $key, $value ) {
+			$this->meta[ $key ] = $value;
+		}
+
+		/**
+		 * @param string $key Meta key.
+		 * @param bool   $single Single.
+		 * @return mixed
+		 */
+		public function get_meta( $key, $single = true ) {
+			unset( $single );
+			return isset( $this->meta[ $key ] ) ? $this->meta[ $key ] : '';
+		}
+
+		/**
+		 * @return object|null
+		 */
+		public function get_product() {
+			return $this->product;
+		}
+
+		/**
+		 * @return string
+		 */
+		public function get_name() {
+			return $this->name;
+		}
+
+		/**
+		 * @return array<int,object>
+		 */
+		public function get_items() {
+			return $this->items;
+		}
+
+		public function save() {
+			$this->saved = true;
 		}
 	}
 }
@@ -272,7 +424,7 @@ function rw_checkout_use_cart( $items ) {
  */
 function rw_checkout_reset_post() {
 	$GLOBALS['rw_test_notices'] = array();
-	unset( $_POST['reactwoo_domain'] );
+	unset( $_POST['reactwoo_domain'], $_POST['rw_service_domain'] );
 }
 
 /**
@@ -282,7 +434,16 @@ function rw_checkout_reset_post() {
 function rw_checkout_render( $handler ) {
 	ob_start();
 	$handler->add_domain_field_to_checkout();
+	$handler->add_service_website_fields_to_checkout();
 	return (string) ob_get_clean();
+}
+
+/**
+ * @param ReactWoo_Subscription_Handler $handler Handler.
+ */
+function rw_checkout_validate_all( $handler ) {
+	$handler->validate_domain_field();
+	$handler->validate_service_website_fields();
 }
 
 /**
@@ -448,9 +609,10 @@ rw_assert( strpos( $licensed_html, 'example.com' ) !== false, 'Licensed checkout
 rw_assert( strpos( $licensed_html, 'Enter the domain where you will use the license key.' ) !== false, 'Licensed checkout keeps the domain description' );
 rw_assert( strpos( $licensed_html, 'validate-required' ) !== false, 'Licensed checkout keeps the domain field required' );
 rw_assert( substr_count( $licensed_html, 'License Domain' ) === 1, 'Licensed checkout prints the domain field once' );
+rw_assert( strpos( $licensed_html, 'Website for this service' ) === false, 'A licensed-only checkout does not ask for a service website' );
 
 rw_checkout_reset_post();
-$checkout_handler->validate_domain_field();
+rw_checkout_validate_all( $checkout_handler );
 rw_assert( rw_checkout_notice_messages() === array( 'Please enter your license domain.' ), 'Licensed checkout rejects an empty domain' );
 
 rw_checkout_reset_post();
@@ -468,55 +630,252 @@ $_POST['reactwoo_domain'] = 'shop.example.co.uk';
 $checkout_handler->validate_domain_field();
 rw_assert( rw_checkout_notice_messages() === array(), 'Licensed checkout accepts a subdomain' );
 
-rw_checkout_use_cart( $service_cart );
-rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A service-only checkout prints no domain field' );
+$hosting_only = array(
+	'hosting'        => rw_checkout_line( $hosting ),
+	'hosting_simple' => rw_checkout_line( $hosting_simple ),
+);
+rw_checkout_use_cart( $hosting_only );
+rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A hosting cart with no licence package prints no checkout field' );
 rw_checkout_reset_post();
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array(), 'A service-only checkout does not require a domain' );
-$_POST['reactwoo_domain'] = 'not a domain';
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array(), 'A service-only checkout does not validate a posted domain' );
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array(), 'A hosting cart does not validate a website or a licence domain' );
+
+$maintenance_only = array(
+	'plan' => rw_checkout_line( $maintenance_essential ),
+);
+rw_checkout_use_cart( $maintenance_only );
+$maintenance_html = rw_checkout_render( $checkout_handler );
+rw_assert( strpos( $maintenance_html, 'License Domain' ) === false, 'A maintenance-only checkout does not use licence wording' );
+rw_assert( strpos( $maintenance_html, 'Website for this service' ) !== false, 'A maintenance-only checkout asks for the service website' );
+rw_assert( strpos( $maintenance_html, 'This plan applies to that one site.' ) !== false, 'Maintenance help text says the plan applies to that one site' );
+rw_assert( strpos( $maintenance_html, 'name="rw_service_domain[plan]"' ) !== false, 'The maintenance website is its own field' );
+rw_assert( substr_count( $maintenance_html, 'rw-service-domain-field' ) === 1, 'One maintenance line asks for one website' );
+rw_checkout_reset_post();
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array( 'Please enter the website for Product 3654.' ), 'Maintenance checkout requires a website' );
+rw_assert( strpos( implode( ' ', rw_checkout_notice_messages() ), 'licen' ) === false, 'The maintenance website error does not use licence wording' );
+$_POST['rw_service_domain'] = array( 'plan' => 'not a domain' );
+$GLOBALS['rw_test_notices'] = array();
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array( 'Please enter a valid website for Product 3654.' ), 'Maintenance checkout rejects an invalid website' );
+$_POST['rw_service_domain'] = array( 'plan' => 'https://example.com' );
+$GLOBALS['rw_test_notices'] = array();
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array( 'Please enter a valid website for Product 3654.' ), 'Maintenance checkout uses the same domain pattern as the licence field' );
+$_POST['rw_service_domain'] = array( 'plan' => ' plan.example.com ' );
+$GLOBALS['rw_test_notices'] = array();
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array(), 'Maintenance checkout accepts a normalised website' );
+rw_assert( $checkout_handler->normalize_checkout_domain( ' plan.example.com ' ) === 'plan.example.com', 'Service websites are normalised with the licence domain check' );
+rw_assert( $checkout_handler->normalize_checkout_domain( 'not a domain' ) === '', 'Invalid websites normalise to empty' );
+
+$support_only = array(
+	'support' => rw_checkout_line( $support_packs[0] ),
+);
+rw_checkout_use_cart( $support_only );
+$support_html = rw_checkout_render( $checkout_handler );
+rw_assert( strpos( $support_html, 'License Domain' ) === false, 'A support-only checkout does not use licence wording' );
+rw_assert( strpos( $support_html, 'Website for this service' ) !== false, 'A support-only checkout asks for the service website' );
+rw_assert( strpos( $support_html, 'This support applies to that one site.' ) !== false, 'Support help text says the support applies to that one site' );
+rw_checkout_reset_post();
+$_POST['reactwoo_domain'] = 'licensed.example';
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array( 'Please enter the website for Product 3663.' ), 'Support checkout ignores a posted licence domain' );
+
+$two_services = array(
+	'essential' => rw_checkout_line( $maintenance_essential ),
+	'support'   => rw_checkout_line( $support_packs[0] ),
+);
+rw_checkout_use_cart( $two_services );
+$two_html = rw_checkout_render( $checkout_handler );
+rw_assert( substr_count( $two_html, 'rw-service-domain-field' ) === 2, 'Each service line has its own website field' );
+rw_assert( strpos( $two_html, 'Website for this service (Product 3654)' ) !== false, 'The maintenance line is labelled with its product' );
+rw_assert( strpos( $two_html, 'Website for this service (Product 3663)' ) !== false, 'The support line is labelled with its product' );
+rw_assert( strpos( $two_html, 'License Domain' ) === false, 'Two service lines do not create a licence domain' );
+
+$support_variation = rw_checkout_product( 9100, 'subscription_variation', 3663, 'Support variation' );
+rw_assert( $checkout_handler->product_needs_service_website( $support_variation ) === true, 'A variation of support pack 3663 needs a website' );
+rw_assert( $checkout_handler->product_needs_service_website( $hosting ) === false, 'Hosting is not given a service website field' );
+rw_assert( $checkout_handler->product_needs_service_website( $maintenance_variation ) === true, 'A maintenance variation needs a website' );
+rw_assert( $checkout_handler->product_needs_service_website( $custom_maintenance ) === true, 'A maintenance plan key needs a website without hardcoding that product id' );
+rw_checkout_meta( 3663, '_reactwoo_license_package_id', 44 );
+rw_assert( $checkout_handler->product_issues_plugin_licence( $support_packs[0] ) === false, 'A support pack with a stale package id is still not a plugin licence' );
 
 rw_checkout_use_cart( $mixed_cart );
 $mixed_html = rw_checkout_render( $checkout_handler );
-rw_assert( strpos( $mixed_html, 'License Domain' ) !== false, 'A mixed checkout keeps the domain field' );
+rw_assert( strpos( $mixed_html, 'License Domain' ) !== false, 'A mixed checkout keeps the licence domain field' );
+rw_assert( strpos( $mixed_html, 'Website for this service' ) !== false, 'A mixed checkout also asks for each service website' );
+rw_assert( strpos( $mixed_html, 'name="reactwoo_domain"' ) !== false, 'The licence domain keeps its own input' );
+rw_assert( strpos( $mixed_html, 'name="rw_service_domain[' ) !== false, 'Service websites are not posted as the licence domain' );
+rw_assert( strpos( $mixed_html, 'Product 3701' ) === false, 'Hosting in a mixed cart does not get a service website' );
+rw_assert( strpos( $mixed_html, 'Product 3702' ) === false, 'Simple hosting in a mixed cart does not get a service website' );
 rw_checkout_reset_post();
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array( 'Please enter your license domain.' ), 'A mixed checkout still requires a domain' );
-$_POST['reactwoo_domain'] = 'example.com';
-$GLOBALS['rw_test_notices'] = array();
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array(), 'A mixed checkout accepts a valid domain' );
+rw_checkout_validate_all( $checkout_handler );
+$mixed_notices = rw_checkout_notice_messages();
+rw_assert( in_array( 'Please enter your license domain.', $mixed_notices, true ), 'A mixed checkout still requires a licence domain' );
+rw_assert( count( $mixed_notices ) > 1, 'A mixed checkout also requires a website for each service line' );
 
 rw_checkout_use_cart( $renewal_licensed );
-rw_assert( strpos( rw_checkout_render( $checkout_handler ), 'License Domain' ) !== false, 'A licensed renewal checkout prints the domain field' );
+$licensed_renewal_html = rw_checkout_render( $checkout_handler );
+rw_assert( strpos( $licensed_renewal_html, 'License Domain' ) !== false, 'A licensed renewal checkout prints the domain field' );
+rw_assert( strpos( $licensed_renewal_html, 'Website for this service' ) === false, 'A licensed renewal does not ask for a service website' );
 rw_checkout_reset_post();
-$checkout_handler->validate_domain_field();
+rw_checkout_validate_all( $checkout_handler );
 rw_assert( rw_checkout_notice_messages() === array( 'Please enter your license domain.' ), 'A licensed renewal still requires a domain' );
 $_POST['reactwoo_domain'] = 'example.com';
 $GLOBALS['rw_test_notices'] = array();
-$checkout_handler->validate_domain_field();
+rw_checkout_validate_all( $checkout_handler );
 rw_assert( rw_checkout_notice_messages() === array(), 'A licensed renewal accepts a valid domain' );
 
 rw_checkout_use_cart( $renewal_service );
-rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A maintenance renewal prints no domain field' );
+rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A maintenance renewal does not ask for a website again' );
 rw_checkout_reset_post();
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array(), 'A maintenance renewal does not validate the domain' );
+$_POST['reactwoo_domain'] = 'licensed.example';
+$_POST['rw_service_domain'] = array( '0' => 'posted.example' );
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array(), 'A maintenance renewal does not validate a new website' );
 
 rw_checkout_use_cart( $switch_licensed );
-rw_assert( strpos( rw_checkout_render( $checkout_handler ), 'name="reactwoo_domain"' ) !== false, 'A licensed subscription switch prints the domain field' );
+$licensed_switch_html = rw_checkout_render( $checkout_handler );
+rw_assert( strpos( $licensed_switch_html, 'name="reactwoo_domain"' ) !== false, 'A licensed subscription switch prints the domain field' );
+rw_assert( strpos( $licensed_switch_html, 'Website for this service' ) === false, 'A licensed switch does not ask for a service website' );
 rw_checkout_reset_post();
 $_POST['reactwoo_domain'] = 'bad domain';
-$checkout_handler->validate_domain_field();
+rw_checkout_validate_all( $checkout_handler );
 rw_assert( rw_checkout_notice_messages() === array( 'Please enter a valid domain name.' ), 'A licensed subscription switch still rejects an invalid domain' );
 
 rw_checkout_use_cart( $switch_service );
-rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A maintenance subscription switch prints no domain field' );
+rw_assert( rw_checkout_render( $checkout_handler ) === '', 'A maintenance subscription switch does not ask for a website again' );
 rw_checkout_reset_post();
 $_POST['reactwoo_domain'] = 'bad domain';
-$checkout_handler->validate_domain_field();
-rw_assert( rw_checkout_notice_messages() === array(), 'A maintenance subscription switch does not validate the domain' );
+$_POST['rw_service_domain'] = array( '0' => 'posted.example' );
+rw_checkout_validate_all( $checkout_handler );
+rw_assert( rw_checkout_notice_messages() === array(), 'A maintenance subscription switch does not validate a new website' );
+
+$meta_key = ReactWoo_Subscription_Handler::SERVICE_DOMAIN_META;
+rw_assert( $meta_key === '_rw_service_domain', 'Service websites use the _rw_service_domain meta key' );
+
+$plan_item = new RW_Checkout_Meta_Bag();
+$plan_item->product = $maintenance_essential;
+$_POST['rw_service_domain'] = array( 'plan' => ' plan.example.com ' );
+$_POST['reactwoo_domain'] = 'licensed.example';
+$checkout_handler->save_checkout_service_domain_line_item( $plan_item, 'plan', rw_checkout_line( $maintenance_essential ), null );
+rw_assert( isset( $plan_item->meta[ $meta_key ] ) && $plan_item->meta[ $meta_key ] === 'plan.example.com', 'The maintenance line stores the normalised service website' );
+rw_assert( ! isset( $plan_item->meta['_reactwoo_domain'] ), 'A licence domain is not copied onto a service line' );
+
+$support_item = new RW_Checkout_Meta_Bag();
+$support_item->product = $support_packs[0];
+$_POST['rw_service_domain'] = array( 'support' => 'support.example' );
+$_POST['reactwoo_domain'] = 'licensed.example';
+$checkout_handler->save_checkout_service_domain_line_item( $support_item, 'support', rw_checkout_line( $support_packs[0] ), null );
+rw_assert( $support_item->meta[ $meta_key ] === 'support.example', 'The support line stores its own website' );
+
+$host_item = new RW_Checkout_Meta_Bag();
+$host_item->product = $hosting;
+$_POST['rw_service_domain'] = array( 'hosting' => 'host.example' );
+$_POST['reactwoo_domain'] = 'host.example';
+$checkout_handler->save_checkout_service_domain_line_item( $host_item, 'hosting', rw_checkout_line( $hosting ), null );
+rw_assert( $host_item->meta === array(), 'Hosting does not store a service website' );
+
+$order_line = new RW_Checkout_Meta_Bag();
+$order_line->product = $maintenance_essential;
+$order_line->meta[ $meta_key ] = 'plan.example.com';
+$order = new RW_Checkout_Meta_Bag();
+$order->items = array( $order_line );
+$sub_line = new RW_Checkout_Meta_Bag();
+$sub_line->product = $maintenance_essential;
+$subscription = new RW_Checkout_Meta_Bag();
+$subscription->items = array( $sub_line );
+$checkout_handler->save_service_domain_on_new_subscription( $subscription, $order, null );
+rw_assert( $sub_line->meta[ $meta_key ] === 'plan.example.com', 'The maintenance subscription line keeps the website' );
+rw_assert( $subscription->meta[ $meta_key ] === 'plan.example.com', 'The maintenance subscription stores _rw_service_domain' );
+
+$support_order_line = new RW_Checkout_Meta_Bag();
+$support_order_line->product = $support_packs[0];
+$support_order_line->meta[ $meta_key ] = 'support.example';
+$support_order = new RW_Checkout_Meta_Bag();
+$support_order->items = array( $support_order_line );
+$support_sub_line = new RW_Checkout_Meta_Bag();
+$support_sub_line->product = $support_packs[0];
+$support_sub = new RW_Checkout_Meta_Bag();
+$support_sub->items = array( $support_sub_line );
+$checkout_handler->save_service_domain_on_new_subscription( $support_sub, $support_order, null );
+rw_assert( $support_sub_line->meta[ $meta_key ] === 'support.example', 'A support line on a subscription stores the website' );
+rw_assert( ! isset( $support_sub->meta[ $meta_key ] ), 'A support pack does not write maintenance subscription meta' );
+
+$second_order_line = new RW_Checkout_Meta_Bag();
+$second_order_line->product = $maintenance_standard;
+$second_order_line->meta[ $meta_key ] = 'other.example';
+$split_order = new RW_Checkout_Meta_Bag();
+$split_order->items = array( $order_line, $second_order_line );
+$split_a = new RW_Checkout_Meta_Bag();
+$split_a->product = $maintenance_essential;
+$split_b = new RW_Checkout_Meta_Bag();
+$split_b->product = $maintenance_standard;
+$split_sub = new RW_Checkout_Meta_Bag();
+$split_sub->items = array( $split_a, $split_b );
+$checkout_handler->save_service_domain_on_new_subscription( $split_sub, $split_order, null );
+rw_assert( $split_a->meta[ $meta_key ] === 'plan.example.com', 'Each maintenance line keeps its own website' );
+rw_assert( $split_b->meta[ $meta_key ] === 'other.example', 'A second maintenance line keeps a different website' );
+rw_assert( ! isset( $split_sub->meta[ $meta_key ] ), 'Different maintenance sites are not collapsed onto one subscription value' );
+
+$GLOBALS['rw_test_wcs'][910] = $subscription;
+$renewal_item = new RW_Checkout_Meta_Bag();
+$renewal_item->product = $maintenance_essential;
+$_POST['reactwoo_domain'] = 'licensed.example';
+$_POST['rw_service_domain'] = array( '0' => 'posted.example' );
+$checkout_handler->save_checkout_service_domain_line_item( $renewal_item, '0', $renewal_service[0], null );
+rw_assert( $renewal_item->meta[ $meta_key ] === 'plan.example.com', 'A maintenance renewal keeps the stored site instead of the posted value' );
+
+$geo_renewal_item = new RW_Checkout_Meta_Bag();
+$geo_renewal_item->product = $geo;
+$service_renewal_item = new RW_Checkout_Meta_Bag();
+$service_renewal_item->product = $maintenance_essential;
+$renewal_order = new RW_Checkout_Meta_Bag();
+$renewal_order->items = array( $geo_renewal_item, $service_renewal_item );
+$checkout_handler->copy_service_domain_to_renewal_order( $renewal_order, $subscription );
+rw_assert( ! isset( $geo_renewal_item->meta[ $meta_key ] ), 'Automatic renewal does not put the service website on a licensed line' );
+rw_assert( $service_renewal_item->meta[ $meta_key ] === 'plan.example.com', 'Automatic renewal copies the stored site onto the maintenance line' );
+
+$old_line = new RW_Checkout_Meta_Bag();
+$old_line->meta[ $meta_key ] = 'switch.example';
+$new_line = new RW_Checkout_Meta_Bag();
+$new_line->product = $maintenance_standard;
+$switch_sub = new RW_Checkout_Meta_Bag();
+$checkout_handler->keep_service_domain_on_switched_item( null, $switch_sub, $new_line, $old_line );
+rw_assert( $new_line->meta[ $meta_key ] === 'switch.example', 'A maintenance switch copies the stored site onto the new line' );
+rw_assert( $switch_sub->meta[ $meta_key ] === 'switch.example', 'A maintenance switch keeps the website on the subscription' );
+
+$GLOBALS['rw_test_wcs'][912] = $switch_sub;
+$switch_order_item = new RW_Checkout_Meta_Bag();
+$switch_order_item->product = $maintenance_variation;
+$_POST['reactwoo_domain'] = 'licensed.example';
+$_POST['rw_service_domain'] = array( '0' => 'posted.example' );
+$checkout_handler->save_checkout_service_domain_line_item( $switch_order_item, '0', $switch_service[0], null );
+rw_assert( $switch_order_item->meta[ $meta_key ] === 'switch.example', 'Switch checkout stores the existing site and ignores the licence domain' );
+
+$admin_line = new RW_Checkout_Meta_Bag();
+$admin_line->name = 'Essential maintenance';
+$admin_line->meta[ $meta_key ] = 'plan.example.com';
+$admin_order = new RW_Checkout_Meta_Bag();
+$admin_order->items = array( $admin_line );
+ob_start();
+$checkout_handler->display_service_domain_admin( $admin_order );
+$admin_html = ob_get_clean();
+rw_assert( strpos( $admin_html, 'Website for this service' ) !== false, 'Admin orders and subscriptions show the service website' );
+rw_assert( strpos( $admin_html, 'Essential maintenance: plan.example.com' ) !== false, 'Admin shows which line the website belongs to' );
+rw_assert( stripos( $admin_html, 'licen' ) === false, 'The service admin block does not use licence wording' );
+ob_start();
+$checkout_handler->display_service_domain_order_item( 1, $admin_line, $maintenance_essential );
+$item_html = ob_get_clean();
+rw_assert( strpos( $item_html, 'Website for this service:' ) !== false && strpos( $item_html, 'plan.example.com' ) !== false, 'Admin order items show the service website' );
+$hidden_meta = $checkout_handler->hide_service_domain_item_meta( array( '_qty' ) );
+rw_assert( in_array( '_rw_service_domain', $hidden_meta, true ), 'Service website meta is hidden from customer-facing item meta' );
+rw_assert( in_array( 'woocommerce_checkout_create_order_line_item', $GLOBALS['rw_test_actions'], true ), 'Checkout stores the service website on the order line' );
+rw_assert( in_array( 'woocommerce_checkout_subscription_created', $GLOBALS['rw_test_actions'], true ), 'New maintenance subscriptions receive the service website' );
+rw_assert( in_array( 'wcs_renewal_order_created', $GLOBALS['rw_test_actions'], true ), 'Automatic renewals copy the stored service website' );
+rw_assert( in_array( 'woocommerce_subscription_item_switched', $GLOBALS['rw_test_actions'], true ), 'Subscription switches keep the stored service website' );
+rw_assert( in_array( 'woocommerce_after_order_itemmeta', $GLOBALS['rw_test_actions'], true ), 'Admin order items can show the service website' );
 
 $GLOBALS['rw_test_filters']['reactwoo_api_manager_unlicensed_product_ids'] = array(
 	function ( $ids ) {
