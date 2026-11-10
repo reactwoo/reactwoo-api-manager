@@ -66,6 +66,18 @@ class ReactWoo_Customer_Account_Service {
 				continue;
 			}
 
+			if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+				$bundle_records = ReactWoo_Maintenance_Bundle::account_records( $subscription );
+				if ( $bundle_records ) {
+					foreach ( $bundle_records as $bundle_record ) {
+						if ( self::is_licensed_record( $bundle_record ) ) {
+							$records[] = $bundle_record;
+						}
+					}
+					continue;
+				}
+			}
+
 			try {
 				$record = $this->build_record( $subscription, $downloads );
 			} catch ( Exception $e ) {
@@ -87,9 +99,21 @@ class ReactWoo_Customer_Account_Service {
 	 * @param WC_Subscription $subscription Subscription.
 	 * @return string|WP_Error
 	 */
-	public function get_owned_license_key( $subscription ) {
+	public function get_owned_license_key( $subscription, $package_slug = '' ) {
 		if ( ! $subscription instanceof WC_Subscription ) {
 			return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
+		}
+
+		$package_slug = strtolower( trim( (string) $package_slug ) );
+		if ( $package_slug !== '' ) {
+			if ( ! class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+				return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
+			}
+			$key = ReactWoo_Maintenance_Bundle::owned_key( $subscription, $package_slug );
+			if ( $key === '' ) {
+				return new WP_Error( 'not_found', __( 'Licence not found.', 'reactwoo-api-manager' ), array( 'status' => 404 ) );
+			}
+			return $key;
 		}
 
 		$key = (string) $subscription->get_meta( '_reactwoo_license_key', true );

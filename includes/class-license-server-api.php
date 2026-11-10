@@ -127,6 +127,10 @@ class ReactWoo_License_Server_API {
      *   @type int    $billing_interval
      *   @type string $renewal_frequency
      *   @type string $plan_code
+     *   @type string $source_ref          Bundle idempotency key {subscription}:{package}. Omit for a standalone licence.
+     *   @type int    $max_activations
+     *   @type string $renewal_policy      deactivate_on_non_renewal for Maintenance bundle keys only.
+     *   @type bool   $maintenance_bundle
      * }
      * @return array|WP_Error
      */
@@ -175,6 +179,18 @@ class ReactWoo_License_Server_API {
         }
         if ( isset( $args['plan_code'] ) && $args['plan_code'] ) {
             $body['plan_code'] = strtolower( trim( (string) $args['plan_code'] ) );
+        }
+        if ( ! empty( $args['source_ref'] ) ) {
+            $body['source_ref'] = (string) $args['source_ref'];
+        }
+        if ( isset( $args['max_activations'] ) && $args['max_activations'] !== '' ) {
+            $body['max_activations'] = (int) $args['max_activations'];
+        }
+        if ( ! empty( $args['renewal_policy'] ) ) {
+            $body['renewal_policy'] = (string) $args['renewal_policy'];
+        }
+        if ( ! empty( $args['maintenance_bundle'] ) ) {
+            $body['maintenance_bundle'] = true;
         }
 
         $headers = array(
@@ -238,12 +254,13 @@ class ReactWoo_License_Server_API {
     /**
      * Sync subscription status to license server v1 endpoint.
      *
-     * @param int    $subscription_id
-     * @param string $status          Woo status (active|on-hold|cancelled|expired|pending-cancel|pending-cancellation)
-     * @param string $current_period_end Optional end date (Y-m-d H:i:s)
+     * @param int         $subscription_id
+     * @param string      $status          Woo status (active|on-hold|cancelled|expired|pending-cancel|pending-cancellation)
+     * @param string|null $current_period_end Optional end date (Y-m-d H:i:s)
+     * @param array       $extra           Optional sync_all and package_slugs for a Maintenance bundle.
      * @return array|WP_Error
      */
-    public function sync_subscription_v1( $subscription_id, $status, $current_period_end = null ) {
+    public function sync_subscription_v1( $subscription_id, $status, $current_period_end = null, $extra = array() ) {
         if ( ! $this->master_key ) {
             return new WP_Error(
                 'missing_master_key',
@@ -259,6 +276,12 @@ class ReactWoo_License_Server_API {
         );
         if ( $current_period_end ) {
             $body['current_period_end'] = $current_period_end;
+        }
+        if ( is_array( $extra ) && ! empty( $extra['sync_all'] ) ) {
+            $body['sync_all'] = true;
+        }
+        if ( is_array( $extra ) && ! empty( $extra['package_slugs'] ) && is_array( $extra['package_slugs'] ) ) {
+            $body['package_slugs'] = array_values( $extra['package_slugs'] );
         }
 
         $headers = array(
@@ -655,6 +678,9 @@ class ReactWoo_License_Server_API {
         if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
             $line = 'ReactWoo API Manager API: ' . $message;
             if ( ! empty( $context ) ) {
+                if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                    $context = ReactWoo_Maintenance_Bundle::redact( $context );
+                }
                 // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
                 $line .= ' | ' . wp_json_encode( $context );
             }

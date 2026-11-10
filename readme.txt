@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.18
+Stable tag: 2.1.19
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,12 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.19 =
+* Maintenance plans can include real licence keys for the tier. Essential waits for one plugin chosen in My Account. Standard includes Geo Core Pro, Geo Commerce and Atomic Pro, and adds Geo Optimise only when that product can be bought. Business adds Decision Cloud.
+* Every included key is tied to the Maintenance subscription, limited to one website, and deactivated on cancel, expiry or on-hold. A full refund revokes those keys. Separately purchased licences are left alone.
+* Annual Maintenance issues keys when the subscription is active. Monthly Maintenance issues them after the first successful renewal. Both rules can be changed under Settings.
+* Bundle keys, including Atomic Pro, stop working if the Maintenance plan is not renewed.
 
 = 2.1.18 =
 * Checkout License Domain is shown and required only for products that issue a licence. Maintenance plans and support packs ask for the one website that service covers, stored as `_rw_service_domain` on the order line and on the maintenance subscription. Hosting carts with no licence package still skip both fields. Service renewals and switches keep the stored site. Licensed renewals and switches still require a licence domain.

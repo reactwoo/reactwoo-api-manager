@@ -55,6 +55,9 @@ class ReactWoo_Plugin_Download_Service {
 		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_meta' ) ) {
 			return '';
 		}
+		if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) && ReactWoo_Maintenance_Bundle::is_bundle_subscription( $subscription ) ) {
+			return '';
+		}
 		if ( ! class_exists( 'RWCC_Order_Meta' ) || ! class_exists( 'RWCC_Plan_Map' ) ) {
 			return '';
 		}
@@ -167,6 +170,12 @@ class ReactWoo_Plugin_Download_Service {
 	 * @return string[]
 	 */
 	public static function entitled_plugin_slugs( $subscription ) {
+		if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+			$bundle_slugs = ReactWoo_Maintenance_Bundle::download_slugs( $subscription );
+			if ( $bundle_slugs ) {
+				return $bundle_slugs;
+			}
+		}
 		if ( self::should_hide_downloads( $subscription ) ) {
 			$plan = self::cloud_plan( $subscription );
 			if ( $plan && class_exists( 'RWCC_Entitlement_Handover' ) ) {

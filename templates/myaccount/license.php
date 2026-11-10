@@ -125,7 +125,7 @@ $status_labels = array(
 							<div class="rw-account__panel-head">
 								<span><?php esc_html_e( 'Licence key', 'reactwoo-api-manager' ); ?></span>
 								<?php if ( ! empty( $record['can_reveal_key'] ) ) : ?>
-									<button type="button" class="rw-account__copy" data-rw-copy-key="<?php echo esc_attr( (string) $record['subscription_id'] ); ?>">
+									<button type="button" class="rw-account__copy" data-rw-copy-key="<?php echo esc_attr( (string) $record['subscription_id'] ); ?>"<?php echo ! empty( $record['package_slug'] ) ? ' data-rw-copy-package="' . esc_attr( (string) $record['package_slug'] ) . '"' : ''; ?>>
 										<?php esc_html_e( 'Copy key', 'reactwoo-api-manager' ); ?>
 									</button>
 								<?php elseif ( 'pending' === $status ) : ?>
