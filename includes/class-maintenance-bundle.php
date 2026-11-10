@@ -962,7 +962,21 @@ class ReactWoo_Maintenance_Bundle {
 				continue;
 			}
 			if ( is_object( $client ) && method_exists( $client, 'update_license_status' ) ) {
-				$client->update_license_status( $license_id, 'refunded' );
+				// PUT api/licenses/{id}/status with { "status": "refunded" }.
+				// The licence server must accept that value. Local rows stay
+				// refunded when it refuses, so the key is not issued again.
+				$result = $client->update_license_status( $license_id, 'refunded' );
+				if ( is_wp_error( $result ) ) {
+					self::log(
+						'refund_status_rejected',
+						array(
+							'subscription_id' => (int) $subscription->get_id(),
+							'package_slug'    => $slug,
+							'license_id'      => $license_id,
+							'error'           => $result->get_error_message(),
+						)
+					);
+				}
 			}
 			$stored[ $slug ]['status'] = 'refunded';
 			$ids[] = $license_id;
@@ -1141,6 +1155,7 @@ class ReactWoo_Maintenance_Bundle {
 
 	/**
 	 * Full refunds revoke bundle keys. Partial refunds do not.
+	 * A zero-total order counts when a refund has been recorded.
 	 * A refund of a separately purchased licence is not handled here.
 	 *
 	 * @param int $order_id  Order id.
@@ -1279,6 +1294,11 @@ class ReactWoo_Maintenance_Bundle {
 	}
 
 	/**
+	 * A paid order is fully refunded when the refunded amount covers the total.
+	 * A zero-total order is fully refunded when a refund has been recorded:
+	 * a refund object, order status refunded, or a refunded amount above zero.
+	 * A checkout that was free and has no refund is not a refund.
+	 *
 	 * @param object $order Order.
 	 * @return bool
 	 */
@@ -1286,9 +1306,84 @@ class ReactWoo_Maintenance_Bundle {
 		if ( ! is_object( $order ) || ! method_exists( $order, 'get_total' ) || ! method_exists( $order, 'get_total_refunded' ) ) {
 			return false;
 		}
+		if ( method_exists( $order, 'get_status' ) && 'refunded' === (string) $order->get_status() ) {
+			return true;
+		}
 		$total    = (float) $order->get_total();
 		$refunded = (float) $order->get_total_refunded();
-		return $total > 0 && ( $refunded + 0.00001 ) >= $total;
+		if ( $total > 0 ) {
+			return ( $refunded + 0.00001 ) >= $total;
+		}
+		return self::order_records_refund( $order );
+	}
+
+	/**
+	 * Whether WooCommerce has stored a refund against this order.
+	 *
+	 * @param object $order Order.
+	 * @return bool
+	 */
+	public static function order_records_refund( $order ) {
+		if ( ! is_object( $order ) ) {
+			return false;
+		}
+		if ( method_exists( $order, 'get_refunds' ) ) {
+			$refunds = $order->get_refunds();
+			if ( is_array( $refunds ) && count( $refunds ) > 0 ) {
+				return true;
+			}
+		}
+		if ( method_exists( $order, 'get_status' ) && 'refunded' === (string) $order->get_status() ) {
+			return true;
+		}
+		if ( method_exists( $order, 'get_total_refunded' ) && (float) $order->get_total_refunded() > 0 ) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * True when this status change is a cancellation caused by a refund.
+	 * A partial refund of a paid order does not qualify.
+	 *
+	 * @param object $subscription Subscription.
+	 * @param string $new_status   Status being applied. Empty uses the subscription status.
+	 * @return bool
+	 */
+	public static function subscription_cancelled_for_refund( $subscription, $new_status = '' ) {
+		if ( ! is_object( $subscription ) ) {
+			return false;
+		}
+		$status = strtolower( trim( (string) $new_status ) );
+		if ( '' === $status && method_exists( $subscription, 'get_status' ) ) {
+			$status = strtolower( (string) $subscription->get_status() );
+		}
+		if ( ! in_array( $status, array( 'cancelled', 'canceled' ), true ) ) {
+			return false;
+		}
+		$orders = array();
+		if ( method_exists( $subscription, 'get_parent' ) ) {
+			$parent = $subscription->get_parent();
+			if ( is_object( $parent ) ) {
+				$orders[] = $parent;
+			}
+		}
+		if ( method_exists( $subscription, 'get_related_orders' ) ) {
+			$related = $subscription->get_related_orders();
+			if ( is_array( $related ) ) {
+				foreach ( $related as $order ) {
+					if ( is_object( $order ) ) {
+						$orders[] = $order;
+					}
+				}
+			}
+		}
+		foreach ( $orders as $order ) {
+			if ( self::order_is_fully_refunded( $order ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

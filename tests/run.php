@@ -104,6 +104,7 @@ require_once __DIR__ . '/cloud-commerce.php';
 require_once __DIR__ . '/licensed-account-menu.php';
 require_once __DIR__ . '/checkout-domain-field.php';
 require_once __DIR__ . '/maintenance-bundle.php';
+require_once __DIR__ . '/staging-fixes.php';
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";

@@ -163,6 +163,9 @@ class RW_Bundle_Product {
 	public function get_parent_id() {
 		return 0;
 	}
+	public function get_type() {
+		return 'subscription';
+	}
 	public function is_type( $type ) {
 		return 'subscription' === $type;
 	}
@@ -176,8 +179,20 @@ class RW_Bundle_Item {
 	public function get_product() {
 		return $this->product;
 	}
+	public function get_id() {
+		return $this->product->get_id();
+	}
 	public function get_product_id() {
 		return $this->product->get_id();
+	}
+	public function get_variation_id() {
+		return 0;
+	}
+	public function get_name() {
+		return 'Licensed plugin';
+	}
+	public function get_type() {
+		return 'line_item';
 	}
 	public function get_meta( $key, $single = true ) {
 		unset( $key, $single );
@@ -208,10 +223,21 @@ class RW_Bundle_Order {
 		return isset( $this->meta[ $key ] ) ? $this->meta[ $key ] : '';
 	}
 	public function get_total() {
-		return 99;
+		return array_key_exists( 'total', $this->meta ) ? $this->meta['total'] : 99;
 	}
 	public function get_total_refunded() {
 		return isset( $this->meta['refunded'] ) ? $this->meta['refunded'] : 0;
+	}
+	public function get_refunds() {
+		return ( isset( $this->meta['refunds'] ) && is_array( $this->meta['refunds'] ) ) ? $this->meta['refunds'] : array();
+	}
+	public function get_status() {
+		return isset( $this->meta['status'] ) ? (string) $this->meta['status'] : 'completed';
+	}
+	public function update_meta_data( $key, $value ) {
+		$this->meta[ $key ] = $value;
+	}
+	public function save() {
 	}
 }
 
@@ -261,6 +287,20 @@ class RW_Bundle_Sub {
 	}
 	public function get_parent() {
 		return $this->parent;
+	}
+	public $end_date = '';
+	public $related_orders = array();
+	public function get_date( $type ) {
+		if ( 'end' === $type ) {
+			return $this->end_date;
+		}
+		return '';
+	}
+	public function get_total() {
+		return 49;
+	}
+	public function get_related_orders() {
+		return $this->related_orders;
 	}
 	public function get_change_payment_method_url() {
 		return '';
@@ -442,6 +482,45 @@ rw_assert( ReactWoo_Maintenance_Bundle::order_is_fully_refunded( $partial ) === 
 $full = new RW_Bundle_Order( 78 );
 $full->meta['refunded'] = 99;
 rw_assert( ReactWoo_Maintenance_Bundle::order_is_fully_refunded( $full ) === true, 'A refund of the full order total revokes bundle keys' );
+
+$zero_plain = new RW_Bundle_Order( 79 );
+$zero_plain->meta['total'] = 0;
+$zero_plain->meta['refunded'] = 0;
+rw_assert( ReactWoo_Maintenance_Bundle::order_is_fully_refunded( $zero_plain ) === false, 'A zero-total order with no refund does not revoke bundle keys' );
+$zero_recorded = new RW_Bundle_Order( 80 );
+$zero_recorded->meta['total'] = 0;
+$zero_recorded->meta['refunded'] = 0;
+$zero_recorded->meta['refunds'] = array( array( 'id' => 5 ) );
+rw_assert( ReactWoo_Maintenance_Bundle::order_is_fully_refunded( $zero_recorded ) === true, 'A zero-total order with a refund recorded revokes bundle keys' );
+$zero_status = new RW_Bundle_Order( 81 );
+$zero_status->meta['total'] = 0;
+$zero_status->meta['status'] = 'refunded';
+rw_assert( ReactWoo_Maintenance_Bundle::order_is_fully_refunded( $zero_status ) === true, 'A zero-total order marked refunded revokes bundle keys' );
+
+class RW_Bundle_Api_Rejects_Refund extends RW_Bundle_Api {
+	public function update_license_status( $id, $status ) {
+		$this->updates[] = array( (int) $id, (string) $status );
+		if ( 'refunded' === $status ) {
+			return new WP_Error( 'api_error', 'Invalid status' );
+		}
+		return true;
+	}
+}
+
+$rejected_sub = rw_bundle_subscription( 62, 3657, 'standard', 'year', 'reject.example' );
+$rejected_api = new RW_Bundle_Api_Rejects_Refund();
+ReactWoo_Maintenance_Bundle::provision_slug( $rejected_sub, $rejected_sub->parent, 'reactwoo-geo-core-pro', 'reject-refund', $rejected_api );
+ReactWoo_Maintenance_Bundle::refund_bundle( $rejected_sub, $rejected_api );
+rw_assert( ReactWoo_Maintenance_Bundle::stored_licenses( $rejected_sub )['reactwoo-geo-core-pro']['status'] === 'refunded', 'A refused refunded status is still stored on the subscription' );
+$sent_refunded = false;
+foreach ( $rejected_api->updates as $update ) {
+	if ( (int) $update[0] > 0 && 'refunded' === $update[1] ) {
+		$sent_refunded = true;
+	}
+}
+rw_assert( $sent_refunded, 'refund_bundle still sends status refunded when the licence server refuses it' );
+$reject_log = json_encode( $GLOBALS['reactwoo_maintenance_bundle_log'] );
+rw_assert( is_string( $reject_log ) && strpos( $reject_log, 'refund_status_rejected' ) !== false, 'A refused refunded status is logged' );
 
 $failed = rw_bundle_subscription( 61, 3657, 'standard', 'year', 'failed.example' );
 $failed_api = new RW_Bundle_Api();

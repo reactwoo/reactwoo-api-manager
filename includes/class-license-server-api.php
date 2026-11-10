@@ -511,7 +511,12 @@ class ReactWoo_License_Server_API {
     }
 
     /**
-     * Update license status
+     * Update licence status.
+     *
+     * PUT api/licenses/{id}/status with JSON { "status": "<status>" } and
+     * api_key when the store key is set. Callers send active, inactive,
+     * suspended, cancelled, expired, and refunded. refunded has to be stored
+     * by the licence server; this client does not substitute another status.
      *
      * @param int    $license_id License ID
      * @param string $status New status

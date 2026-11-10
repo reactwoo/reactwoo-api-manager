@@ -111,13 +111,18 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
-     * Handle subscription status change
+     * Handle subscription status change.
      *
-     * @param WC_Subscription $subscription Subscription object
-     * @param string          $old_status Old status
-     * @param string          $new_status New status
+     * WooCommerce Subscriptions fires this as
+     * ( $subscription, $new_status, $old_status ). See WC_Subscription
+     * status_transition(), around the woocommerce_subscription_status_updated
+     * action in class-wc-subscription.php.
+     *
+     * @param WC_Subscription $subscription Subscription object.
+     * @param string          $new_status   Status after the change.
+     * @param string          $old_status   Status before the change.
      */
-    public function handle_subscription_status_change( $subscription, $old_status, $new_status ) {
+    public function handle_subscription_status_change( $subscription, $new_status, $old_status ) {
         $license_key = $subscription->get_meta( '_reactwoo_license_key' );
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
         $bundle_licences = class_exists( 'ReactWoo_Maintenance_Bundle' ) ? ReactWoo_Maintenance_Bundle::stored_licenses( $subscription ) : array();
@@ -147,11 +152,16 @@ class ReactWoo_Subscription_Handler {
 
         // Sync subscription state to license server v1 endpoint (it will map to license statuses)
         $current_period_end = $subscription->get_date( 'end' );
+        $cancelled_for_refund = class_exists( 'ReactWoo_Maintenance_Bundle' ) && ReactWoo_Maintenance_Bundle::subscription_cancelled_for_refund( $subscription, $new_status );
         if ( $license_key && $license_id ) {
             $api->sync_subscription_v1( $subscription->get_id(), $new_status, $current_period_end );
         }
         if ( $bundle_licences && class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
-            ReactWoo_Maintenance_Bundle::sync_stored_licences( $subscription, $new_status, $current_period_end, $api );
+            if ( $cancelled_for_refund ) {
+                ReactWoo_Maintenance_Bundle::refund_bundle( $subscription, $api );
+            } else {
+                ReactWoo_Maintenance_Bundle::sync_stored_licences( $subscription, $new_status, $current_period_end, $api );
+            }
         }
 
         /**
@@ -507,8 +517,8 @@ class ReactWoo_Subscription_Handler {
             return;
         }
 
-        // Get domain from order (stored for reference; v1 provisioning is keyed by subscription, not domain)
-        $domain = $this->get_domain_from_order( $order );
+        // Licence domain, then the service website, then the billing email domain.
+        $domain = $this->get_domain_from_order( $order, $subscription );
 
         $this->log_debug(
             'create_license_for_subscription: resolved package and domain',
@@ -655,8 +665,9 @@ class ReactWoo_Subscription_Handler {
         if ( isset( $license['domain'] ) ) {
             $subscription->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
         }
-        if ( isset( $license['package_id'] ) ) {
-            $subscription->update_meta_data( '_reactwoo_license_package_id', $license['package_id'] );
+        $stored_package_id = self::package_id_from_provision_response( $license, $package_id );
+        if ( $stored_package_id ) {
+            $subscription->update_meta_data( '_reactwoo_license_package_id', $stored_package_id );
         }
         
         $subscription->save();
@@ -833,28 +844,88 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
-     * Get domain from order
+     * Package id returned by provision_license_v1.
      *
-     * @param WC_Order $order Order object
+     * The licence server returns it as package.id. Older responses may still
+     * send a top-level package_id. Otherwise keep the product's package id so
+     * a later Maintenance bundle can see the standalone licence.
+     *
+     * @param array<string, mixed>|mixed $license             Provision response.
+     * @param int|string                 $product_package_id Product package id.
+     * @return int
+     */
+    public static function package_id_from_provision_response( $license, $product_package_id ) {
+        if ( is_array( $license ) && isset( $license['package'] ) && is_array( $license['package'] ) && isset( $license['package']['id'] ) ) {
+            $nested = (int) $license['package']['id'];
+            if ( $nested > 0 ) {
+                return $nested;
+            }
+        }
+        if ( is_array( $license ) && isset( $license['package_id'] ) ) {
+            $top = (int) $license['package_id'];
+            if ( $top > 0 ) {
+                return $top;
+            }
+        }
+        return (int) $product_package_id > 0 ? (int) $product_package_id : 0;
+    }
+
+    /**
+     * Domain used when a standalone licence is provisioned.
+     *
+     * The checkout licence domain wins. _rw_service_domain is used when that
+     * field is empty, including on the subscription, its lines, and the order.
+     * The billing email domain is only the last resort.
+     *
+     * @param WC_Order|object      $order        Order object.
+     * @param WC_Subscription|null $subscription Subscription, when already known.
      * @return string|null
      */
-    private function get_domain_from_order( $order ) {
-        // Check order meta for domain field
-        $domain = $order->get_meta( '_reactwoo_domain' );
+    private function get_domain_from_order( $order, $subscription = null ) {
+        $domain = ( is_object( $order ) && method_exists( $order, 'get_meta' ) ) ? $order->get_meta( '_reactwoo_domain' ) : '';
         if ( $domain ) {
             return $domain;
         }
 
-        // Fallback to billing email domain (as last resort)
-        $billing_email = $order->get_billing_email();
+        $service = $this->service_domain_for_standalone( $subscription, $order );
+        if ( '' !== $service ) {
+            return $service;
+        }
+
+        $billing_email = ( is_object( $order ) && method_exists( $order, 'get_billing_email' ) ) ? $order->get_billing_email() : '';
         if ( $billing_email ) {
             $email_parts = explode( '@', $billing_email );
-            if ( isset( $email_parts[1] ) ) {
+            if ( isset( $email_parts[1] ) && '' !== $email_parts[1] ) {
                 return $email_parts[1];
             }
         }
 
         return null;
+    }
+
+    /**
+     * Service website stored for this purchase, when the customer entered one.
+     *
+     * @param object|null $subscription Subscription.
+     * @param object|null $order        Order.
+     * @return string
+     */
+    private function service_domain_for_standalone( $subscription, $order ) {
+        $domain = $this->stored_service_domain_on_subscription( $subscription );
+        if ( '' !== $domain ) {
+            return $domain;
+        }
+        if ( is_object( $order ) && method_exists( $order, 'get_meta' ) ) {
+            $domain = $this->normalize_checkout_domain( $order->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' !== $domain ) {
+                return $domain;
+            }
+        }
+        $rows = $this->service_domain_rows( $order );
+        if ( $rows && ! empty( $rows[0]['domain'] ) ) {
+            return (string) $rows[0]['domain'];
+        }
+        return '';
     }
 
     /**
