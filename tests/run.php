@@ -106,6 +106,7 @@ require_once __DIR__ . '/checkout-domain-field.php';
 require_once __DIR__ . '/maintenance-bundle.php';
 require_once __DIR__ . '/staging-fixes.php';
 require_once __DIR__ . '/refund-cancel.php';
+require_once __DIR__ . '/first-payment.php';
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";

@@ -128,7 +128,7 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
                 <?php esc_html_e( 'Maintenance subscribers receive a licence for each package in their tier. Every key is limited to the website on that subscription and is deactivated with the plan. Packages can be ids or slugs. Essential is empty by default, so the customer chooses one plugin in My Account. Leave Essential empty unless you want to issue a fixed package instead of offering that choice.', 'reactwoo-api-manager' ); ?>
             </p>
             <p>
-                <?php esc_html_e( 'Default issue rule: annual billing receives keys as soon as the subscription is active, because the year is paid up front. Monthly billing receives keys after the first successful renewal. The checkout payment is not counted. This limits a monthly sign-up that would otherwise collect keys and cancel in the same period. Geo Optimise is included automatically only when its product can be bought, unless you force it on or off. It is waitlist-only until then. Business includes Decision Cloud on the plan code below. The default is Starter.', 'reactwoo-api-manager' ); ?>
+                <?php esc_html_e( 'Default issue rule: monthly and annual billing both receive keys when the first payment completes (the checkout order is processing or completed). Unpaid or failed orders receive none, and renewals keep the same keys. Geo Optimise is included automatically only when its product can be bought, unless you force it on or off. It is waitlist-only until then. Business includes Decision Cloud on the plan code below. The default is Starter.', 'reactwoo-api-manager' ); ?>
             </p>
             <table class="form-table">
                 <tr>
@@ -137,7 +137,7 @@ if ( isset( $_POST['test_connection'] ) && check_admin_referer( 'reactwoo_api_ma
                         <select id="reactwoo_bundle_trigger" name="reactwoo_maintenance_bundle[trigger]">
                             <?php
                             $trigger_options = array(
-                                'annual_immediate_monthly_after_renewal' => __( 'Annual immediately, monthly after the first successful renewal', 'reactwoo-api-manager' ),
+                                'first_payment' => __( 'At the first payment, monthly and annual', 'reactwoo-api-manager' ),
                                 'immediately' => __( 'Immediately for every billing period', 'reactwoo-api-manager' ),
                                 'annual_only' => __( 'Annual billing only', 'reactwoo-api-manager' ),
                                 'after_renewal' => __( 'After paid renewals, for every billing period', 'reactwoo-api-manager' ),

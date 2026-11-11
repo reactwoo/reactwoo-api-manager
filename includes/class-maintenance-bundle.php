@@ -7,14 +7,21 @@
  * Separately purchased licences are never changed.
  *
  * Issue trigger (ReactWoo License Manager, Settings):
- * - annual_immediate_monthly_after_renewal (default): annual billing is issued
- *   when the subscription becomes active, because the year is paid up front.
- *   Monthly billing is issued only after the first successful renewal, so a
- *   new monthly sign-up cannot collect keys and cancel in the same period.
- * - immediately: every billing period, as soon as the subscription is active.
+ * - first_payment (default): monthly and annual billing are both issued when
+ *   the first payment completes, that is when the parent (checkout) order is
+ *   paid (processing or completed). Unpaid, pending and failed orders get no
+ *   keys. Renewals reuse the same keys (source_ref is the idempotency key).
+ * - annual_immediate_monthly_after_renewal (legacy, before 2.1.21): annual on
+ *   the first payment, monthly only after the first paid renewal. A saved
+ *   setting with this value is read as first_payment.
+ * - immediately: every billing period, as soon as the first payment completes.
  * - annual_only: annual billing only. Monthly subscriptions receive no keys.
  * - after_renewal: after N successful renewals, for every billing period.
  *   N defaults to 1. The checkout payment is not counted. 1 is the first renewal.
+ *
+ * Every trigger also needs a paid first payment (or a counted paid renewal).
+ * A subscription with no parent order (created by hand in admin) counts as
+ * paid once it is active.
  *
  * Essential (product 3654) includes no key until the customer chooses one plugin
  * in My Account, unless an administrator sets a package list for that plan.
@@ -45,7 +52,8 @@ class ReactWoo_Maintenance_Bundle {
 	const META_COUNTED      = '_reactwoo_maintenance_counted_orders';
 	const META_PLAN         = '_reactwoo_maintenance_bundle_plan';
 	const RENEWAL_POLICY    = 'deactivate_on_non_renewal';
-	const TRIGGER_DEFAULT   = 'annual_immediate_monthly_after_renewal';
+	const TRIGGER_DEFAULT   = 'first_payment';
+	const TRIGGER_LEGACY    = 'annual_immediate_monthly_after_renewal';
 
 	/**
 	 * @return void
@@ -129,6 +137,10 @@ class ReactWoo_Maintenance_Bundle {
 		$input    = is_array( $input ) ? $input : array();
 		$triggers = array( 'immediately', 'annual_only', 'after_renewal', self::TRIGGER_DEFAULT );
 		$trigger  = isset( $input['trigger'] ) ? (string) $input['trigger'] : $defaults['trigger'];
+		if ( self::TRIGGER_LEGACY === $trigger ) {
+			// 2.1.21: monthly plans get keys at the first payment too, like annual.
+			$trigger = self::TRIGGER_DEFAULT;
+		}
 		if ( ! in_array( $trigger, $triggers, true ) ) {
 			$trigger = $defaults['trigger'];
 		}
@@ -288,15 +300,16 @@ class ReactWoo_Maintenance_Bundle {
 	 * @param array<string, mixed> $settings             Settings.
 	 * @param string               $billing_period       Woo billing period.
 	 * @param int                  $paid_renewals        Successful renewals, not counting checkout.
+	 * @param bool                 $first_paid           The first (checkout) payment is complete.
 	 * @return bool
 	 */
-	public static function trigger_allows( array $settings, $billing_period, $paid_renewals ) {
+	public static function trigger_allows( array $settings, $billing_period, $paid_renewals, $first_paid = true ) {
 		$trigger = isset( $settings['trigger'] ) ? (string) $settings['trigger'] : self::TRIGGER_DEFAULT;
 		$needed  = isset( $settings['paid_periods'] ) ? max( 1, (int) $settings['paid_periods'] ) : 1;
 		$paid    = max( 0, (int) $paid_renewals );
 		$annual  = self::is_annual( $billing_period );
-		if ( 'immediately' === $trigger ) {
-			return true;
+		if ( ! $first_paid && $paid < 1 ) {
+			return false;
 		}
 		if ( 'annual_only' === $trigger ) {
 			return $annual;
@@ -304,10 +317,50 @@ class ReactWoo_Maintenance_Bundle {
 		if ( 'after_renewal' === $trigger ) {
 			return $paid >= $needed;
 		}
-		if ( $annual ) {
+		if ( self::TRIGGER_LEGACY === $trigger && ! $annual ) {
+			return $paid >= $needed;
+		}
+		// first_payment (default) and immediately.
+		return true;
+	}
+
+	/**
+	 * Whether the first (checkout) payment for a subscription is complete.
+	 *
+	 * True when a paid renewal has been counted, or the parent order is paid
+	 * (Woo paid statuses: processing, completed). Pending, on-hold, failed,
+	 * cancelled and refunded parent orders are not paid. A subscription with
+	 * no parent order (made by hand in admin) counts as paid once active.
+	 *
+	 * @param object $subscription Subscription.
+	 * @return bool
+	 */
+	public static function first_payment_complete( $subscription ) {
+		if ( ! is_object( $subscription ) ) {
+			return false;
+		}
+		if ( method_exists( $subscription, 'get_meta' ) && (int) $subscription->get_meta( self::META_PAID, true ) > 0 ) {
 			return true;
 		}
-		return $paid >= $needed;
+		$parent = method_exists( $subscription, 'get_parent' ) ? $subscription->get_parent() : null;
+		if ( ! is_object( $parent ) ) {
+			$status = method_exists( $subscription, 'get_status' ) ? (string) $subscription->get_status() : '';
+			return in_array( $status, array( 'active', 'pending-cancel' ), true );
+		}
+		return self::order_is_paid( $parent );
+	}
+
+	/**
+	 * @param object $order Order.
+	 * @return bool
+	 */
+	public static function order_is_paid( $order ) {
+		if ( ! is_object( $order ) ) {
+			return false;
+		}
+		$status = method_exists( $order, 'get_status' ) ? (string) $order->get_status() : '';
+		$paid   = function_exists( 'wc_get_is_paid_statuses' ) ? (array) wc_get_is_paid_statuses() : array( 'processing', 'completed' );
+		return in_array( $status, $paid, true );
 	}
 
 	/**
@@ -588,14 +641,16 @@ class ReactWoo_Maintenance_Bundle {
 		}
 		$billing = method_exists( $subscription, 'get_billing_period' ) ? (string) $subscription->get_billing_period() : '';
 		$paid    = method_exists( $subscription, 'get_meta' ) ? (int) $subscription->get_meta( self::META_PAID, true ) : 0;
-		if ( ! self::trigger_allows( $settings, $billing, $paid ) ) {
+		$first   = self::first_payment_complete( $subscription );
+		if ( ! self::trigger_allows( $settings, $billing, $paid, $first ) ) {
 			self::log(
-				'skipped_trigger',
+				$first ? 'skipped_trigger' : 'skipped_unpaid',
 				array(
 					'subscription_id' => (int) $subscription->get_id(),
 					'package_slug'    => $slug,
 					'billing_period'  => $billing,
 					'paid_renewals'   => $paid,
+					'first_paid'      => $first,
 					'trigger'         => isset( $settings['trigger'] ) ? (string) $settings['trigger'] : '',
 				)
 			);
@@ -1812,8 +1867,8 @@ class ReactWoo_Maintenance_Bundle {
 	 */
 	private static function trigger_customer_copy( array $settings ) {
 		$trigger = isset( $settings['trigger'] ) ? (string) $settings['trigger'] : self::TRIGGER_DEFAULT;
-		if ( 'immediately' === $trigger ) {
-			return __( 'The licence is issued when the subscription is active.', 'reactwoo-api-manager' );
+		if ( 'immediately' === $trigger || self::TRIGGER_DEFAULT === $trigger ) {
+			return __( 'The licence is issued when you subscribe, as soon as the first payment is complete.', 'reactwoo-api-manager' );
 		}
 		if ( 'annual_only' === $trigger ) {
 			return __( 'The licence is issued for annual billing only.', 'reactwoo-api-manager' );
