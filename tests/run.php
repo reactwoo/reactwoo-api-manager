@@ -107,6 +107,12 @@ require_once __DIR__ . '/maintenance-bundle.php';
 require_once __DIR__ . '/staging-fixes.php';
 require_once __DIR__ . '/refund-cancel.php';
 require_once __DIR__ . '/first-payment.php';
+// 2.1.22 S2 tests load the real licence-server client, so they run in a separate process.
+passthru( escapeshellarg( PHP_BINARY ) . ' ' . escapeshellarg( __DIR__ . '/s2-domain-lookup.php' ), $rw_s2_rc );
+if ( 0 !== $rw_s2_rc ) {
+	echo "FAIL: S2 domain lookup tests (separate process)\n";
+	++$failures;
+}
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";

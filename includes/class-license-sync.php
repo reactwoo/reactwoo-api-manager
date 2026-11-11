@@ -39,6 +39,7 @@ class ReactWoo_License_Sync {
 
         // Create lookup arrays for faster matching
         $subscriptions_by_license_key = array();
+        $subscriptions_by_license_id = array();
         $subscriptions_by_domain = array();
         $subscriptions_by_email = array();
 
@@ -47,6 +48,10 @@ class ReactWoo_License_Sync {
             $license_key = $subscription->get_meta( '_reactwoo_license_key' );
             if ( $license_key ) {
                 $subscriptions_by_license_key[ $license_key ] = $subscription;
+            }
+            $existing_license_id = (int) $subscription->get_meta( '_reactwoo_license_id' );
+            if ( $existing_license_id > 0 ) {
+                $subscriptions_by_license_id[ $existing_license_id ] = $subscription;
             }
 
             // Index by domain
@@ -74,6 +79,16 @@ class ReactWoo_License_Sync {
         // Match licenses to subscriptions
         foreach ( $licenses as $license ) {
             $license_key = isset( $license['license_key'] ) ? $license['license_key'] : '';
+            // 2.1.22: a masked key (****ab12) is never a match key and is never saved.
+            $license_label = is_string( $license_key ) ? $license_key : '';
+            if ( ReactWoo_License_Server_API::is_masked_license_key( $license_key ) ) {
+                $license_key = '';
+                if ( ! empty( $license['license_key_last4'] ) ) {
+                    $license_label = '****' . $license['license_key_last4'];
+                } elseif ( ! empty( $license['license_key_masked'] ) ) {
+                    $license_label = (string) $license['license_key_masked'];
+                }
+            }
             $license_domain = isset( $license['domain'] ) ? $license['domain'] : '';
             $license_id = isset( $license['id'] ) ? $license['id'] : null;
             $package_id = isset( $license['package_id'] ) ? $license['package_id'] : null;
@@ -82,8 +97,14 @@ class ReactWoo_License_Sync {
             $match_method = '';
             $subscription = null;
 
+            // Method 0: the subscription already holds this licence id.
+            if ( $license_id && isset( $subscriptions_by_license_id[ (int) $license_id ] ) ) {
+                $subscription = $subscriptions_by_license_id[ (int) $license_id ];
+                $match_method = 'license_id';
+                $matched = true;
+            }
             // Method 1: Match by license key (most reliable)
-            if ( $license_key && isset( $subscriptions_by_license_key[ $license_key ] ) ) {
+            elseif ( $license_key && isset( $subscriptions_by_license_key[ $license_key ] ) ) {
                 $subscription = $subscriptions_by_license_key[ $license_key ];
                 $match_method = 'license_key';
                 $matched = true;
@@ -127,7 +148,9 @@ class ReactWoo_License_Sync {
             if ( $matched && $subscription ) {
                 // Update subscription with license information
                 try {
-                    $subscription->update_meta_data( '_reactwoo_license_key', $license_key );
+                    if ( $license_key !== '' ) {
+                        $subscription->update_meta_data( '_reactwoo_license_key', $license_key );
+                    }
                     
                     if ( $license_id ) {
                         $subscription->update_meta_data( '_reactwoo_license_id', $license_id );
@@ -145,7 +168,7 @@ class ReactWoo_License_Sync {
 
                     $results['matched']++;
                     $results['matched_details'][] = array(
-                        'license_key' => $license_key,
+                        'license_key' => $license_label,
                         'license_id' => $license_id,
                         'domain' => $license_domain,
                         'subscription_id' => $subscription->get_id(),
@@ -155,7 +178,7 @@ class ReactWoo_License_Sync {
                     $results['errors'][] = sprintf(
                         __( 'Error updating subscription #%d for license %s: %s', 'reactwoo-api-manager' ),
                         $subscription->get_id(),
-                        $license_key,
+                        $license_label,
                         $e->getMessage()
                     );
                 }
@@ -163,7 +186,7 @@ class ReactWoo_License_Sync {
                 // No match found
                 $results['unmatched']++;
                 $results['unmatched_details'][] = array(
-                    'license_key' => $license_key,
+                    'license_key' => $license_label,
                     'license_id' => $license_id,
                     'domain' => $license_domain,
                     'package_id' => $package_id,
