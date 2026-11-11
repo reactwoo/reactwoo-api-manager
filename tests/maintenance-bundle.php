@@ -55,8 +55,9 @@ rw_assert(
 );
 
 rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'year', 0 ) === true, 'Default trigger issues annual keys immediately' );
-rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'month', 0 ) === false, 'Default trigger waits for the first monthly renewal' );
-rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'month', 1 ) === true, 'Default trigger issues monthly keys after one paid renewal' );
+rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'month', 0 ) === true, 'Default trigger issues monthly keys at the first payment' );
+rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'month', 0, false ) === false, 'Default trigger issues nothing before the first payment' );
+rw_assert( ReactWoo_Maintenance_Bundle::trigger_allows( $bundle_settings, 'month', 1 ) === true, 'Default trigger still allows monthly keys after a paid renewal' );
 
 $immediate = $bundle_settings;
 $immediate['trigger'] = 'immediately';
@@ -371,14 +372,15 @@ $monthly_api = new RW_Bundle_Api();
 foreach ( ReactWoo_Maintenance_Bundle::slugs_for_subscription( $monthly, array() ) as $slug ) {
 	ReactWoo_Maintenance_Bundle::provision_slug( $monthly, $monthly->parent, $slug, 'month', $monthly_api );
 }
-rw_assert( $monthly_api->provisions === array(), 'Monthly Standard does not issue keys at checkout' );
+rw_assert( count( $monthly_api->provisions ) === 3, 'Monthly Standard issues keys at the first payment' );
+$monthly_calls = count( $monthly_api->calls );
 ReactWoo_Maintenance_Bundle::note_paid_renewal( $monthly, $monthly->parent );
 ReactWoo_Maintenance_Bundle::note_paid_renewal( $monthly, $monthly->parent );
 rw_assert( (int) $monthly->get_meta( ReactWoo_Maintenance_Bundle::META_PAID ) === 1, 'The same renewal order is counted once' );
 foreach ( ReactWoo_Maintenance_Bundle::slugs_for_subscription( $monthly, array() ) as $slug ) {
 	ReactWoo_Maintenance_Bundle::provision_slug( $monthly, $monthly->parent, $slug, 'month-renewed', $monthly_api );
 }
-rw_assert( count( $monthly_api->provisions ) === 3, 'Monthly Standard issues keys after the first successful renewal' );
+rw_assert( count( $monthly_api->provisions ) === 3 && count( $monthly_api->calls ) === $monthly_calls, 'The first monthly renewal adds no keys and does not call the licence server' );
 
 $no_domain = rw_bundle_subscription( 57, 3657, 'standard', 'year', '' );
 $no_domain->meta['_rw_service_domain'] = '';
@@ -655,6 +657,6 @@ $sanitized = ReactWoo_Maintenance_Bundle::sanitize_settings(
 		'paid_periods' => 0,
 	)
 );
-rw_assert( $sanitized['trigger'] === 'annual_immediate_monthly_after_renewal', 'An unknown issue trigger falls back to the documented default' );
+rw_assert( $sanitized['trigger'] === 'first_payment', 'An unknown issue trigger falls back to the documented default' );
 rw_assert( (int) $sanitized['paid_periods'] === 1, 'Paid renewals cannot be set below one' );
 rw_assert( strpos( $sanitized['plans']['standard']['packages'], '2269' ) !== false, 'Saving unrelated settings keeps the Standard package map' );

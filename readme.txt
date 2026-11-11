@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.20
+Stable tag: 2.1.21
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,11 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.21 =
+* Maintenance monthly plans now get their licence keys at the first payment, the same as annual. Keys are issued when the checkout order is paid (processing or completed). Before, monthly keys waited for the first renewal.
+* Unpaid, pending and failed orders still get no keys. Renewals reuse the same keys. Cancel, expiry and refund still revoke them.
+* A saved "annual immediately, monthly after the first renewal" setting is read as the new default. "After paid renewals" is still available.
 
 = 2.1.20 =
 * A full refund of a Maintenance bundle order now also cancels the linked subscription, so no renewal is scheduled. Keys stay refunded. Partial refunds change nothing.
