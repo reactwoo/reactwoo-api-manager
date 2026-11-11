@@ -561,19 +561,89 @@ class ReactWoo_License_Server_API {
     }
 
     /**
+     * URL safe to log: the api_key query value is replaced.
+     *
+     * @param string $url URL.
+     * @return string
+     */
+    public static function redact_url( $url ) {
+        return preg_replace( '/([?&]api_key=)[^&#]*/i', '$1[redacted]', (string) $url );
+    }
+
+    /**
+     * Header that carries the store API key on GET requests.
+     *
+     * The key is not put in the URL for the domain lookup, so it never lands
+     * in access logs. Licence servers before the S2 change ignore it.
+     */
+    const STORE_KEY_HEADER = 'X-RW-Store-Key';
+
+    /**
+     * Whether a licence key value is masked (for example ****ab12) or empty.
+     *
+     * @param mixed $key Key value from the licence server.
+     * @return bool
+     */
+    public static function is_masked_license_key( $key ) {
+        if ( ! is_string( $key ) ) {
+            return true;
+        }
+        $key = trim( $key );
+        return $key === '' || strpos( $key, '*' ) !== false;
+    }
+
+    /**
+     * Normalise a licence row from the domain lookup.
+     *
+     * From 2.1.22 the licence server masks keys on GET api/licenses/{domain}
+     * and drops refresh tokens. The callers only need id, package_id,
+     * package_type, domain and status. A masked key is moved to
+     * license_key_masked and license_key is removed, so nothing can mistake a
+     * masked value for a real key or save it on a subscription.
+     *
+     * @param array $license Licence row.
+     * @return array
+     */
+    public static function normalise_domain_license( $license ) {
+        if ( ! is_array( $license ) ) {
+            return array();
+        }
+        unset( $license['refresh_token'] );
+        $key = isset( $license['license_key'] ) ? $license['license_key'] : '';
+        if ( self::is_masked_license_key( $key ) ) {
+            if ( is_string( $key ) && $key !== '' && empty( $license['license_key_masked'] ) ) {
+                $license['license_key_masked'] = $key;
+            }
+            if ( empty( $license['license_key_last4'] ) && is_string( $key ) && strlen( trim( $key ) ) >= 4 ) {
+                $license['license_key_last4'] = substr( trim( $key ), -4 );
+            }
+            unset( $license['license_key'] );
+        }
+        return $license;
+    }
+
+    /**
      * Get licenses by domain
+     *
+     * Sends the store API key in the X-RW-Store-Key header (2.1.22). Keys in
+     * the response may be masked; see normalise_domain_license().
      *
      * @param string $domain Domain name
      * @return array|WP_Error
      */
     public function get_licenses_by_domain( $domain ) {
-        $url = trailingslashit( $this->base_url ) . 'api/licenses/' . urlencode( $domain );
+        $url = trailingslashit( $this->base_url ) . 'api/licenses/' . rawurlencode( $domain );
+
+        $headers = array(
+            'Content-Type' => 'application/json',
+        );
+        if ( $this->api_key ) {
+            $headers[ self::STORE_KEY_HEADER ] = $this->api_key;
+        }
 
         $response = wp_remote_get( $url, array(
             'timeout' => 15,
-            'headers' => array(
-                'Content-Type' => 'application/json',
-            ),
+            'headers' => $headers,
         ) );
 
         if ( is_wp_error( $response ) ) {
@@ -584,12 +654,17 @@ class ReactWoo_License_Server_API {
         $response_body = wp_remote_retrieve_body( $response );
         $data = json_decode( $response_body, true );
 
-        if ( $response_code === 200 && isset( $data['success'] ) && $data['success'] && isset( $data['licenses'] ) ) {
-            return $data['licenses'];
+        if ( $response_code === 200 && isset( $data['success'] ) && $data['success'] && isset( $data['licenses'] ) && is_array( $data['licenses'] ) ) {
+            return array_map( array( __CLASS__, 'normalise_domain_license' ), $data['licenses'] );
         }
 
         if ( $response_code === 404 ) {
             return array(); // No licenses found
+        }
+
+        if ( $response_code === 401 ) {
+            $error_message = isset( $data['error'] ) ? $data['error'] : 'API key is required or invalid';
+            return new WP_Error( 'api_auth_error', $error_message, array( 'status' => $response_code ) );
         }
 
         $error_message = isset( $data['error'] ) ? $data['error'] : 'Failed to fetch licenses';
@@ -630,15 +705,20 @@ class ReactWoo_License_Server_API {
             $url = add_query_arg( $query_args, $url );
         }
 
+        $list_headers = array(
+            'Content-Type' => 'application/json',
+        );
+        if ( $this->api_key ) {
+            $list_headers[ self::STORE_KEY_HEADER ] = $this->api_key;
+        }
+
         $response = wp_remote_get( $url, array(
             'timeout' => 30, // Longer timeout for potentially large datasets
-            'headers' => array(
-                'Content-Type' => 'application/json',
-            ),
+            'headers' => $list_headers,
         ) );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'ReactWoo API Manager: Error fetching all licenses - ' . $response->get_error_message() . ' | URL: ' . $url );
+            error_log( 'ReactWoo API Manager: Error fetching all licenses - ' . $response->get_error_message() . ' | URL: ' . self::redact_url( $url ) );
             return $response;
         }
 
@@ -648,7 +728,7 @@ class ReactWoo_License_Server_API {
 
         // Log the response for debugging
         if ( $response_code !== 200 ) {
-            error_log( 'ReactWoo API Manager: License fetch failed - Status: ' . $response_code . ' | URL: ' . $url . ' | Response: ' . $response_body );
+            error_log( 'ReactWoo API Manager: License fetch failed - Status: ' . $response_code . ' | URL: ' . self::redact_url( $url ) );
         }
 
         if ( $response_code === 404 ) {
