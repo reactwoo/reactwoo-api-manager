@@ -41,6 +41,7 @@ class ReactWoo_API_Manager {
 	 * Initialize the plugin
 	 */
 	private function init() {
+		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-maintenance-bundle.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-server-api.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-license-sync.php';
 		require_once REACTWOO_API_MANAGER_PLUGIN_DIR . 'includes/class-account-logger.php';
@@ -54,6 +55,7 @@ class ReactWoo_API_Manager {
 
 		new ReactWoo_Product_Meta();
 		new ReactWoo_Subscription_Handler();
+		new ReactWoo_Maintenance_Bundle();
 		new ReactWoo_License_Display();
 		new ReactWoo_Account_REST_Controller();
 		new ReactWoo_Email_Delayed();
@@ -137,6 +139,16 @@ class ReactWoo_API_Manager {
 				'type'              => 'string',
 				'sanitize_callback' => 'esc_url_raw',
 				'default'           => 'https://api.reactwoo.com',
+			)
+		);
+
+		register_setting(
+			'reactwoo_api_manager_settings',
+			'reactwoo_maintenance_bundle',
+			array(
+				'type'              => 'array',
+				'sanitize_callback' => array( 'ReactWoo_Maintenance_Bundle', 'sanitize_settings' ),
+				'default'           => array(),
 			)
 		);
 

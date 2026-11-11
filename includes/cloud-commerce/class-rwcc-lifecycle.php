@@ -122,7 +122,26 @@ class RWCC_Lifecycle {
 	 * @param array       $license      Licence payload (unused).
 	 */
 	public function on_license_generated( $subscription, $order = null, $license = array() ) {
-		unset( $license );
+		if ( is_array( $license ) && ! empty( $license['maintenance_bundle'] ) ) {
+			$plan = class_exists( 'RWCC_Plan_Map' ) ? RWCC_Plan_Map::normalize_plan( isset( $license['plan_code'] ) ? $license['plan_code'] : '' ) : '';
+			if ( $plan === '' ) {
+				return array( 'ok' => false, 'error' => 'not_cloud_product' );
+			}
+			$cycle = '';
+			if ( is_object( $subscription ) && method_exists( $subscription, 'get_billing_period' ) && class_exists( 'RWCC_Plan_Map' ) ) {
+				$cycle = RWCC_Plan_Map::normalize_billing_cycle( (string) $subscription->get_billing_period() );
+			}
+			return $this->activate(
+				$subscription,
+				$order,
+				array(
+					'plan'              => $plan,
+					'product_id'        => isset( $license['product_id'] ) ? (int) $license['product_id'] : 0,
+					'billing_cycle'     => $cycle,
+					'skip_supersession' => true,
+				)
+			);
+		}
 		return $this->activate( $subscription, $order );
 	}
 
@@ -379,10 +398,15 @@ class RWCC_Lifecycle {
 	 * @param object|null $order        Parent/related order.
 	 * @return array
 	 */
-	public function activate( $subscription, $order = null ) {
+	public function activate( $subscription, $order = null, array $options = array() ) {
 		$line = $this->meta->qualifying_line( $subscription );
 		if ( ! $line['plan'] && $order ) {
 			$line = $this->meta->qualifying_line( $order );
+		}
+		if ( ! $line['plan'] && ! empty( $options['plan'] ) && class_exists( 'RWCC_Plan_Map' ) ) {
+			$line['plan']          = RWCC_Plan_Map::normalize_plan( $options['plan'] );
+			$line['product_id']    = isset( $options['product_id'] ) ? (int) $options['product_id'] : 0;
+			$line['billing_cycle'] = isset( $options['billing_cycle'] ) ? (string) $options['billing_cycle'] : '';
 		}
 		if ( ! $line['plan'] ) {
 			return array( 'ok' => false, 'error' => 'not_cloud_product' );
@@ -494,7 +518,7 @@ class RWCC_Lifecycle {
 
 		$webhook_ok  = ! empty( $delivery['ok'] );
 		$supersession = array( 'committed' => array(), 'skipped' => array(), 'failed' => true );
-		if ( $webhook_ok ) {
+		if ( $webhook_ok && empty( $options['skip_supersession'] ) ) {
 			$supersession = RWCC_Supersession::commit_covered(
 				$subscription,
 				$this->customer_subscriptions( $customer_id ),
@@ -534,6 +558,9 @@ class RWCC_Lifecycle {
 		$plan = isset( $overrides['plan'] ) && $overrides['plan'] ? $overrides['plan'] : $line['plan'];
 		if ( ! $plan ) {
 			$plan = RWCC_Plan_Map::normalize_plan( RWCC_Order_Meta::get( $subscription, RWCC_Order_Meta::META_PLAN ) );
+		}
+		if ( ! $plan && class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+			$plan = RWCC_Plan_Map::normalize_plan( ReactWoo_Maintenance_Bundle::included_cloud_plan( $subscription ) );
 		}
 		if ( ! $plan ) {
 			return array( 'ok' => false, 'error' => 'not_cloud_product' );

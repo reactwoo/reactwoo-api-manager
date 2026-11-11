@@ -511,6 +511,35 @@ class ReactWoo_License_Display {
 			return;
 		}
 
+		if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+			$bundle_rows = ReactWoo_Maintenance_Bundle::stored_licenses( $subscription );
+			$visible     = array();
+			foreach ( $bundle_rows as $bundle_row ) {
+				if ( empty( $bundle_row['license_key'] ) || ( isset( $bundle_row['status'] ) && 'removed' === $bundle_row['status'] ) ) {
+					continue;
+				}
+				$visible[] = $bundle_row;
+			}
+			if ( $visible ) {
+				echo '<div class="reactwoo-license-block" style="margin:24px 0;padding:16px;border:1px solid #c7c7c7;border-radius:6px;background:#fafbfc;">';
+				echo '<h2 style="margin-top:0;font-size:18px;">' . esc_html__( 'Licences included with this Maintenance plan', 'reactwoo-api-manager' ) . '</h2>';
+				echo '<p>' . esc_html__( 'Each licence covers the website on this plan. The keys stay active only while this subscription stays active.', 'reactwoo-api-manager' ) . '</p>';
+				echo '<ul>';
+				foreach ( $visible as $bundle_row ) {
+					$masked = ReactWoo_Customer_Account_Service::mask_license_key( (string) $bundle_row['license_key'] );
+					$label  = isset( $bundle_row['product_name'] ) ? (string) $bundle_row['product_name'] : '';
+					echo '<li><strong>' . esc_html( $label ) . ':</strong> <code>' . esc_html( $masked ) . '</code></li>';
+				}
+				echo '</ul>';
+				$account_url = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'license' ) : '';
+				if ( $account_url ) {
+					echo '<p><a class="button" href="' . esc_url( $account_url ) . '">' . esc_html__( 'Manage in Products & licences', 'reactwoo-api-manager' ) . '</a></p>';
+				}
+				echo '</div>';
+				return;
+			}
+		}
+
 		$key    = (string) $subscription->get_meta( '_reactwoo_license_key', true );
 		$domain = (string) $subscription->get_meta( '_reactwoo_license_domain', true );
 		if ( $domain === '' ) {

@@ -101,5 +101,6 @@ if ( ! class_exists( 'WC_Subscription', false ) ) {
 	}
 }
 
+require_once dirname( __DIR__ ) . '/includes/class-maintenance-bundle.php';
 require_once dirname( __DIR__ ) . '/includes/class-customer-account-service.php';
 require_once dirname( __DIR__ ) . '/includes/class-plugin-download-service.php';

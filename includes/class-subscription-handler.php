@@ -111,17 +111,23 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
-     * Handle subscription status change
+     * Handle subscription status change.
      *
-     * @param WC_Subscription $subscription Subscription object
-     * @param string          $old_status Old status
-     * @param string          $new_status New status
+     * WooCommerce Subscriptions fires this as
+     * ( $subscription, $new_status, $old_status ). See WC_Subscription
+     * status_transition(), around the woocommerce_subscription_status_updated
+     * action in class-wc-subscription.php.
+     *
+     * @param WC_Subscription $subscription Subscription object.
+     * @param string          $new_status   Status after the change.
+     * @param string          $old_status   Status before the change.
      */
-    public function handle_subscription_status_change( $subscription, $old_status, $new_status ) {
+    public function handle_subscription_status_change( $subscription, $new_status, $old_status ) {
         $license_key = $subscription->get_meta( '_reactwoo_license_key' );
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
+        $bundle_licences = class_exists( 'ReactWoo_Maintenance_Bundle' ) ? ReactWoo_Maintenance_Bundle::stored_licenses( $subscription ) : array();
 
-        if ( ! $license_key || ! $license_id ) {
+        if ( ( ! $license_key || ! $license_id ) && ! $bundle_licences ) {
             $this->log_debug(
                 'handle_subscription_status_change: no license meta present, skipping',
                 array(
@@ -146,7 +152,17 @@ class ReactWoo_Subscription_Handler {
 
         // Sync subscription state to license server v1 endpoint (it will map to license statuses)
         $current_period_end = $subscription->get_date( 'end' );
-        $api->sync_subscription_v1( $subscription->get_id(), $new_status, $current_period_end );
+        $cancelled_for_refund = class_exists( 'ReactWoo_Maintenance_Bundle' ) && ReactWoo_Maintenance_Bundle::subscription_cancelled_for_refund( $subscription, $new_status );
+        if ( $license_key && $license_id ) {
+            $api->sync_subscription_v1( $subscription->get_id(), $new_status, $current_period_end );
+        }
+        if ( $bundle_licences && class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+            if ( $cancelled_for_refund ) {
+                ReactWoo_Maintenance_Bundle::refund_bundle( $subscription, $api );
+            } else {
+                ReactWoo_Maintenance_Bundle::sync_stored_licences( $subscription, $new_status, $current_period_end, $api );
+            }
+        }
 
         /**
          * Observe-only. Cloud bridge must not replace this sync.
@@ -229,9 +245,17 @@ class ReactWoo_Subscription_Handler {
      * @param WC_Order        $renewal_order Renewal order
      */
     public function handle_subscription_renewal( $subscription, $renewal_order ) {
+        if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) && ReactWoo_Maintenance_Bundle::is_maintenance_subscription( $subscription ) ) {
+            ReactWoo_Maintenance_Bundle::note_paid_renewal( $subscription, $renewal_order );
+            $this->create_license_for_subscription( $subscription, $renewal_order );
+        }
+
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
         
         if ( ! $license_id ) {
+            if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) && ReactWoo_Maintenance_Bundle::stored_licenses( $subscription ) ) {
+                do_action( 'reactwoo_license_renewed', $subscription, $renewal_order );
+            }
             return;
         }
 
@@ -279,15 +303,21 @@ class ReactWoo_Subscription_Handler {
      */
     public function handle_payment_failure( $subscription ) {
         $license_id = $subscription->get_meta( '_reactwoo_license_id' );
+        $bundle_ids = class_exists( 'ReactWoo_Maintenance_Bundle' ) ? ReactWoo_Maintenance_Bundle::license_ids( $subscription ) : array();
 
-        if ( ! $license_id ) {
+        if ( ! $license_id && ! $bundle_ids ) {
             return;
         }
 
         $api = new ReactWoo_License_Server_API();
         
         // Set license to inactive on payment failure
-        $api->update_license_status( $license_id, 'inactive' );
+        if ( $license_id ) {
+            $api->update_license_status( $license_id, 'inactive' );
+        }
+        if ( $bundle_ids && class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+            ReactWoo_Maintenance_Bundle::mark_payment_failed( $subscription, $api );
+        }
         
         // Log the payment failure
         $subscription->add_meta_data( '_reactwoo_payment_failure_date', current_time( 'mysql' ), true );
@@ -353,8 +383,15 @@ class ReactWoo_Subscription_Handler {
                 $maintenance_slugs = $this->maintenance_entitlement_slugs( $product );
                 if ( is_array( $maintenance_slugs ) ) {
                     $handled_maintenance = true;
+                    if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                        ReactWoo_Maintenance_Bundle::mark_subscription( $subscription );
+                        $maintenance_slugs = ReactWoo_Maintenance_Bundle::slugs_for_subscription( $subscription, $maintenance_slugs );
+                    }
                     foreach ( $maintenance_slugs as $maintenance_slug ) {
                         $this->provision_entitlement_slug( $subscription, $order, $maintenance_slug, $correlation_id );
+                    }
+                    if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                        ReactWoo_Maintenance_Bundle::revoke_to_match( $subscription, $maintenance_slugs );
                     }
                     $this->log_debug(
                         'create_license_for_subscription: maintenance entitlements resolved',
@@ -434,8 +471,15 @@ class ReactWoo_Subscription_Handler {
                     if ( $handled_maintenance ) {
                         continue;
                     }
+                    if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                        ReactWoo_Maintenance_Bundle::mark_subscription( $subscription );
+                        $maintenance_slugs = ReactWoo_Maintenance_Bundle::slugs_for_subscription( $subscription, $maintenance_slugs );
+                    }
                     foreach ( $maintenance_slugs as $maintenance_slug ) {
                         $this->provision_entitlement_slug( $subscription, $order, $maintenance_slug, $correlation_id );
+                    }
+                    if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                        ReactWoo_Maintenance_Bundle::revoke_to_match( $subscription, $maintenance_slugs );
                     }
                     continue;
                 }
@@ -473,8 +517,8 @@ class ReactWoo_Subscription_Handler {
             return;
         }
 
-        // Get domain from order (stored for reference; v1 provisioning is keyed by subscription, not domain)
-        $domain = $this->get_domain_from_order( $order );
+        // Licence domain, then the service website, then the billing email domain.
+        $domain = $this->get_domain_from_order( $order, $subscription );
 
         $this->log_debug(
             'create_license_for_subscription: resolved package and domain',
@@ -621,8 +665,9 @@ class ReactWoo_Subscription_Handler {
         if ( isset( $license['domain'] ) ) {
             $subscription->update_meta_data( '_reactwoo_license_domain', $license['domain'] );
         }
-        if ( isset( $license['package_id'] ) ) {
-            $subscription->update_meta_data( '_reactwoo_license_package_id', $license['package_id'] );
+        $stored_package_id = self::package_id_from_provision_response( $license, $package_id );
+        if ( $stored_package_id ) {
+            $subscription->update_meta_data( '_reactwoo_license_package_id', $stored_package_id );
         }
         
         $subscription->save();
@@ -739,6 +784,11 @@ class ReactWoo_Subscription_Handler {
                 if ( $subscription_license_id ) {
                     $license_ids[] = $subscription_license_id;
                 }
+                if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                    foreach ( ReactWoo_Maintenance_Bundle::license_ids( $subscription ) as $bundle_license_id ) {
+                        $license_ids[] = $bundle_license_id;
+                    }
+                }
             }
         }
 
@@ -794,28 +844,88 @@ class ReactWoo_Subscription_Handler {
     }
 
     /**
-     * Get domain from order
+     * Package id returned by provision_license_v1.
      *
-     * @param WC_Order $order Order object
+     * The licence server returns it as package.id. Older responses may still
+     * send a top-level package_id. Otherwise keep the product's package id so
+     * a later Maintenance bundle can see the standalone licence.
+     *
+     * @param array<string, mixed>|mixed $license             Provision response.
+     * @param int|string                 $product_package_id Product package id.
+     * @return int
+     */
+    public static function package_id_from_provision_response( $license, $product_package_id ) {
+        if ( is_array( $license ) && isset( $license['package'] ) && is_array( $license['package'] ) && isset( $license['package']['id'] ) ) {
+            $nested = (int) $license['package']['id'];
+            if ( $nested > 0 ) {
+                return $nested;
+            }
+        }
+        if ( is_array( $license ) && isset( $license['package_id'] ) ) {
+            $top = (int) $license['package_id'];
+            if ( $top > 0 ) {
+                return $top;
+            }
+        }
+        return (int) $product_package_id > 0 ? (int) $product_package_id : 0;
+    }
+
+    /**
+     * Domain used when a standalone licence is provisioned.
+     *
+     * The checkout licence domain wins. _rw_service_domain is used when that
+     * field is empty, including on the subscription, its lines, and the order.
+     * The billing email domain is only the last resort.
+     *
+     * @param WC_Order|object      $order        Order object.
+     * @param WC_Subscription|null $subscription Subscription, when already known.
      * @return string|null
      */
-    private function get_domain_from_order( $order ) {
-        // Check order meta for domain field
-        $domain = $order->get_meta( '_reactwoo_domain' );
+    private function get_domain_from_order( $order, $subscription = null ) {
+        $domain = ( is_object( $order ) && method_exists( $order, 'get_meta' ) ) ? $order->get_meta( '_reactwoo_domain' ) : '';
         if ( $domain ) {
             return $domain;
         }
 
-        // Fallback to billing email domain (as last resort)
-        $billing_email = $order->get_billing_email();
+        $service = $this->service_domain_for_standalone( $subscription, $order );
+        if ( '' !== $service ) {
+            return $service;
+        }
+
+        $billing_email = ( is_object( $order ) && method_exists( $order, 'get_billing_email' ) ) ? $order->get_billing_email() : '';
         if ( $billing_email ) {
             $email_parts = explode( '@', $billing_email );
-            if ( isset( $email_parts[1] ) ) {
+            if ( isset( $email_parts[1] ) && '' !== $email_parts[1] ) {
                 return $email_parts[1];
             }
         }
 
         return null;
+    }
+
+    /**
+     * Service website stored for this purchase, when the customer entered one.
+     *
+     * @param object|null $subscription Subscription.
+     * @param object|null $order        Order.
+     * @return string
+     */
+    private function service_domain_for_standalone( $subscription, $order ) {
+        $domain = $this->stored_service_domain_on_subscription( $subscription );
+        if ( '' !== $domain ) {
+            return $domain;
+        }
+        if ( is_object( $order ) && method_exists( $order, 'get_meta' ) ) {
+            $domain = $this->normalize_checkout_domain( $order->get_meta( self::SERVICE_DOMAIN_META, true ) );
+            if ( '' !== $domain ) {
+                return $domain;
+            }
+        }
+        $rows = $this->service_domain_rows( $order );
+        if ( $rows && ! empty( $rows[0]['domain'] ) ) {
+            return (string) $rows[0]['domain'];
+        }
+        return '';
     }
 
     /**
@@ -1706,34 +1816,19 @@ class ReactWoo_Subscription_Handler {
             return;
         }
 
-        $api     = new ReactWoo_License_Server_API();
-        $license = $api->provision_license_v1(
-            array(
-                'customer_email'     => $order->get_billing_email(),
-                'customer_name'      => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
-                'package_slug'       => $slug,
-                'wc_subscription_id' => $subscription->get_id(),
-                'wc_order_id'        => $order->get_id(),
-                'status'             => 'active',
-                'domain'             => $this->get_domain_from_order( $order ),
-                'correlation_id'     => $correlation_id,
-                'currency'           => $subscription->get_currency(),
-                'start_date'         => $subscription->get_date( 'start' ) ? $subscription->get_date( 'start' ) : current_time( 'mysql' ),
-                'billing_period'     => $subscription->get_billing_period(),
-                'billing_interval'   => $subscription->get_billing_interval(),
-            )
-        );
-
-        if ( is_wp_error( $license ) ) {
+        if ( ! class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
             $this->log_debug(
                 'create_license_for_subscription: bundled entitlement was not provisioned',
                 array(
                     'correlation_id' => $correlation_id,
                     'package_slug'   => $slug,
-                    'error'          => $license->get_error_message(),
+                    'error'          => 'maintenance bundle unavailable',
                 )
             );
+            return;
         }
+
+        ReactWoo_Maintenance_Bundle::provision_slug( $subscription, $order, $slug, $correlation_id );
     }
 
     /**
@@ -1748,6 +1843,9 @@ class ReactWoo_Subscription_Handler {
         if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
             $line = 'ReactWoo API Manager: ' . $message;
             if ( ! empty( $context ) ) {
+                if ( class_exists( 'ReactWoo_Maintenance_Bundle' ) ) {
+                    $context = ReactWoo_Maintenance_Bundle::redact( $context );
+                }
                 // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
                 $line .= ' | ' . wp_json_encode( $context );
             }
