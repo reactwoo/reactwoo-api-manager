@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.19
+Stable tag: 2.1.20
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,10 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.20 =
+* A full refund of a Maintenance bundle order now also cancels the linked subscription, so no renewal is scheduled. Keys stay refunded. Partial refunds change nothing.
+* Support runbook: docs/SUPPORT-RUNBOOK.md covers chargebacks and disputes.
 
 = 2.1.19 =
 * Maintenance plans can include real licence keys for the tier. Essential waits for one plugin chosen in My Account. Standard includes Geo Core Pro, Geo Commerce and Atomic Pro, and adds Geo Optimise only when that product can be bought. Business adds Decision Cloud.

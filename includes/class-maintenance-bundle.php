@@ -1170,7 +1170,8 @@ class ReactWoo_Maintenance_Bundle {
 		$order         = wc_get_order( $order_id );
 		$subscriptions = wcs_get_subscriptions_for_order( $order_id, array( 'order_type' => 'any' ) );
 		foreach ( (array) $subscriptions as $subscription ) {
-			if ( ! self::stored_licenses( $subscription ) ) {
+			$has_keys = (bool) self::stored_licenses( $subscription );
+			if ( ! $has_keys && ! self::is_bundle_subscription( $subscription ) ) {
 				continue;
 			}
 			if ( ! $order || ! self::order_is_fully_refunded( $order ) ) {
@@ -1183,8 +1184,59 @@ class ReactWoo_Maintenance_Bundle {
 				);
 				continue;
 			}
-			self::refund_bundle( $subscription );
+			if ( $has_keys ) {
+				self::refund_bundle( $subscription );
+			}
+			self::cancel_after_full_refund( $subscription, $order_id );
 		}
+	}
+
+	/**
+	 * Cancel a bundle subscription after one of its orders is fully refunded.
+	 * Keys were already marked refunded by refund_bundle(); the status sync that the
+	 * cancellation triggers keeps refunded rows refunded, so they never become cancelled.
+	 * Safe to call more than once: a subscription that has already ended is left alone.
+	 *
+	 * @param object $subscription Subscription.
+	 * @param int    $order_id     Fully refunded order.
+	 * @return bool True when this call cancelled the subscription.
+	 */
+	public static function cancel_after_full_refund( $subscription, $order_id = 0 ) {
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_status' ) || ! method_exists( $subscription, 'update_status' ) ) {
+			return false;
+		}
+		$status = strtolower( (string) $subscription->get_status() );
+		if ( in_array( $status, array( 'cancelled', 'expired', 'switched', 'trash' ), true ) ) {
+			return false;
+		}
+		if ( method_exists( $subscription, 'can_be_updated_to' ) && ! $subscription->can_be_updated_to( 'cancelled' ) ) {
+			self::log(
+				'refund_cancel_not_allowed',
+				array(
+					'order_id'        => (int) $order_id,
+					'subscription_id' => (int) $subscription->get_id(),
+					'status'          => $status,
+				)
+			);
+			return false;
+		}
+		$subscription->update_status(
+			'cancelled',
+			sprintf(
+				/* translators: %d: order ID */
+				__( 'Cancelled automatically because order #%d was fully refunded. Included licence keys stay refunded.', '[REDACTED]-api-manager' ),
+				(int) $order_id
+			)
+		);
+		self::log(
+			'refund_cancelled_subscription',
+			array(
+				'order_id'        => (int) $order_id,
+				'subscription_id' => (int) $subscription->get_id(),
+				'previous_status' => $status,
+			)
+		);
+		return true;
 	}
 
 	/**
