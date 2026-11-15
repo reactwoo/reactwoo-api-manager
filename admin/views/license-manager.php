@@ -305,8 +305,16 @@ if ( function_exists( 'wcs_get_subscriptions' ) ) {
         $api = new ReactWoo_License_Server_API();
         
         if ( $domain ) {
-            // Sync licenses for a specific domain
-            $licenses = $api->get_licenses_by_domain( $domain );
+            // Sync licenses for a specific domain. 2.1.22: use the store-key
+            // list filtered by domain, not the public domain lookup, which now
+            // returns masked keys only.
+            $licenses = $api->get_all_licenses( array( 'domain' => $domain ) );
+            if ( is_wp_error( $licenses ) && $licenses->get_error_code() === 'api_auth_error' ) {
+                echo '<div class="notice notice-error"><p>';
+                echo esc_html__( 'API key is required to sync licenses. Please configure your API key in ReactWoo Licenses > Settings.', 'reactwoo-api-manager' );
+                echo '</p></div>';
+                return;
+            }
         } else {
             // Sync all licenses from the server
             $licenses = $api->get_all_licenses();
