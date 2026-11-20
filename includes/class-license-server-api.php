@@ -513,34 +513,40 @@ class ReactWoo_License_Server_API {
     /**
      * Update licence status.
      *
-     * PUT api/licenses/{id}/status with JSON { "status": "<status>" } and
-     * api_key when the store key is set. Callers send active, inactive,
-     * suspended, cancelled, expired, and refunded. refunded has to be stored
-     * by the licence server; this client does not substitute another status.
+     * PUT api/licenses/{id}/status with JSON { "status": "<status>" }.
+     * From 2.1.23 the store key is sent in the X-RW-Master-Key header, the
+     * same way provision and sync already do. The key is also kept in the
+     * JSON body as api_key for older licence servers. Callers send active,
+     * inactive, suspended, cancelled, expired, and refunded. refunded has
+     * to be stored by the licence server; this client does not substitute
+     * another status.
      *
      * @param int    $license_id License ID
      * @param string $status New status
      * @return bool|WP_Error
      */
     public function update_license_status( $license_id, $status ) {
-        // Use public API endpoint with API key authentication
         $url = trailingslashit( $this->base_url ) . 'api/licenses/' . intval( $license_id ) . '/status';
 
         $body = array(
             'status' => $status,
         );
 
-        // Add API key if configured
         if ( $this->api_key ) {
             $body['api_key'] = $this->api_key;
+        }
+
+        $headers = array(
+            'Content-Type' => 'application/json',
+        );
+        if ( $this->master_key ) {
+            $headers['X-RW-Master-Key'] = $this->master_key;
         }
 
         $response = wp_remote_request( $url, array(
             'method' => 'PUT',
             'timeout' => 15,
-            'headers' => array(
-                'Content-Type' => 'application/json',
-            ),
+            'headers' => $headers,
             'body' => json_encode( $body ),
         ) );
 

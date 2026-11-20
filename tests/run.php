@@ -113,6 +113,12 @@ if ( 0 !== $rw_s2_rc ) {
 	echo "FAIL: S2 domain lookup tests (separate process)\n";
 	++$failures;
 }
+// 2.1.23 status-header tests also load the real client.
+passthru( escapeshellarg( PHP_BINARY ) . ' ' . escapeshellarg( __DIR__ . '/status-header.php' ), $rw_status_rc );
+if ( 0 !== $rw_status_rc ) {
+	echo "FAIL: status header tests (separate process)\n";
+	++$failures;
+}
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} failure(s)\n";
