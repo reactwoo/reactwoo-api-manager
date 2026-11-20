@@ -4,7 +4,7 @@ Tags: woocommerce, subscriptions, license, reactwoo
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.22
+Stable tag: 2.1.23
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -22,6 +22,9 @@ ReactWoo API Manager provisions and syncs subscription licences with the ReactWo
 4. Configure the license server URL on the same settings screen.
 
 == Changelog ==
+
+= 2.1.23 =
+* Refund and cancel now send the store key in the X-RW-Master-Key header on PUT api/licenses/{id}/status, the same way provision and sync already do. A body api_key is still sent for older licence servers.
 
 = 2.1.22 =
 * Security (RG-81 S2): the licence lookup by domain now sends the store API key in the X-RW-Store-Key header, ready for the licence server to require it. The key is not put in the URL.
